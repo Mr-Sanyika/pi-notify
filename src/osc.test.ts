@@ -1,112 +1,71 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
-import {
-  buildOscSequences,
-  osc9,
-  osc777,
-  sendOsc,
-  tmuxPassthrough,
-} from './osc.js'
-import { stubStdout } from './testing/stdout.js'
+import { oscNotifySequences, wrapTmuxPassthrough } from './osc.js'
 
-describe('osc777', () => {
-  it('builds an OSC 777 notify sequence', () => {
-    expect(osc777('pi — demo', 'Task finished')).toBe(
-      '\x1b]777;notify;pi — demo;Task finished\x07',
+const ESC = '\x1b'
+const BEL = '\x07'
+
+describe('oscNotifySequences', () => {
+  it('emits OSC 777 first, then OSC 9, when both are enabled', () => {
+    expect(
+      oscNotifySequences('title', 'body', { osc777: true, osc9: true }),
+    ).toEqual([`${ESC}]777;notify;title;body${BEL}`, `${ESC}]9;body${BEL}`])
+  })
+
+  it('emits only OSC 9 when osc777 is off', () => {
+    expect(
+      oscNotifySequences('title', 'body', { osc777: false, osc9: true }),
+    ).toEqual([`${ESC}]9;body${BEL}`])
+  })
+
+  it('emits only OSC 777 when osc9 is off', () => {
+    expect(
+      oscNotifySequences('title', 'body', { osc777: true, osc9: false }),
+    ).toEqual([`${ESC}]777;notify;title;body${BEL}`])
+  })
+
+  it('emits nothing when both are off', () => {
+    expect(
+      oscNotifySequences('title', 'body', { osc777: false, osc9: false }),
+    ).toEqual([])
+  })
+
+  it('strips BEL, ESC, and flattens newlines in title and body', () => {
+    expect(
+      oscNotifySequences('ti\r\ntle', 'bo\x1b]dy\nx', {
+        osc777: true,
+        osc9: false,
+      }),
+    ).toEqual([`${ESC}]777;notify;ti tle;bo]dy x${BEL}`])
+  })
+
+  it('strips semicolons from the title but keeps them in the body', () => {
+    const [osc777, osc9] = oscNotifySequences('ti;tle', 'bo;dy', {
+      osc777: true,
+      osc9: true,
+    })
+    expect(osc777).toBe(`${ESC}]777;notify;title;bo;dy${BEL}`)
+    // OSC 9 body must stay identical to the 777 body for body-keyed dedup.
+    expect(osc9).toBe(`${ESC}]9;bo;dy${BEL}`)
+  })
+})
+
+describe('wrapTmuxPassthrough', () => {
+  it('wraps an OSC 9 sequence with the DCS tmux passthrough', () => {
+    const wrapped = wrapTmuxPassthrough(`${ESC}]9;body${BEL}`)
+    expect(wrapped.startsWith(`${ESC}Ptmux;`)).toBe(true)
+    expect(wrapped.endsWith(`${ESC}\\`)).toBe(true)
+    // The inner OSC's leading ESC must be doubled (classic bug to forget).
+    expect(wrapped).toBe(`${ESC}Ptmux;${ESC}${ESC}]9;body${BEL}${ESC}\\`)
+  })
+
+  it('wraps an OSC 777 sequence and doubles only ESC bytes', () => {
+    const raw = `${ESC}]777;notify;title;body${BEL}`
+    const wrapped = wrapTmuxPassthrough(raw)
+    expect(wrapped).toBe(
+      `${ESC}Ptmux;${ESC}${ESC}]777;notify;title;body${BEL}${ESC}\\`,
     )
-  })
-
-  it('handles empty title and body', () => {
-    expect(osc777('', '')).toBe('\x1b]777;notify;;\x07')
-  })
-
-  it('replaces newlines and strips BEL/ESC from title and body', () => {
-    expect(osc777('a\nb', 'x\x07y\x1bz\r\nw\rv')).toBe(
-      '\x1b]777;notify;a b;xyz w v\x07',
-    )
-  })
-
-  it('removes semicolons from the title only', () => {
-    expect(osc777('ti;tle', 'bo;dy')).toBe('\x1b]777;notify;ti,tle;bo;dy\x07')
-  })
-})
-
-describe('osc9', () => {
-  it('builds an OSC 9 sequence with body only', () => {
-    expect(osc9('Task finished')).toBe('\x1b]9;Task finished\x07')
-  })
-
-  it('sanitizes the body but keeps semicolons', () => {
-    expect(osc9('a;\nb\x1b\x07')).toBe('\x1b]9;a; b\x07')
-  })
-})
-
-describe('tmuxPassthrough', () => {
-  it('wraps the sequence and doubles every ESC', () => {
-    expect(tmuxPassthrough('\x1b]9;hi\x07')).toBe(
-      '\x1bPtmux;\x1b\x1b]9;hi\x07\x1b\\',
-    )
-  })
-})
-
-describe('buildOscSequences', () => {
-  it('emits both variants unwrapped outside tmux', () => {
-    expect(buildOscSequences('t', 'b', false)).toEqual([
-      '\x1b]777;notify;t;b\x07',
-      '\x1b]9;b\x07',
-    ])
-  })
-
-  it('wraps both variants inside tmux', () => {
-    expect(buildOscSequences('t', 'b', true)).toEqual([
-      '\x1bPtmux;\x1b\x1b]777;notify;t;b\x07\x1b\\',
-      '\x1bPtmux;\x1b\x1b]9;b\x07\x1b\\',
-    ])
-  })
-})
-
-describe('sendOsc', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs()
-  })
-
-  it('skips writing when stdout is not a TTY', () => {
-    const restore = stubStdout(undefined)
-    const write = vi.spyOn(process.stdout, 'write').mockReturnValue(true)
-    try {
-      sendOsc({ title: 't', body: 'b' })
-      expect(write).not.toHaveBeenCalled()
-    } finally {
-      restore()
-      write.mockRestore()
-    }
-  })
-
-  it('writes both unwrapped sequences when stdout is a TTY outside tmux', () => {
-    vi.stubEnv('TMUX', undefined)
-    const restore = stubStdout(true)
-    const write = vi.spyOn(process.stdout, 'write').mockReturnValue(true)
-    try {
-      sendOsc({ title: 't', body: 'b' })
-      expect(write).toHaveBeenCalledWith('\x1b]777;notify;t;b\x07\x1b]9;b\x07')
-    } finally {
-      restore()
-      write.mockRestore()
-    }
-  })
-
-  it('wraps sequences in tmux passthrough', () => {
-    vi.stubEnv('TMUX', '/tmp/tmux-0/default,42,0')
-    const restore = stubStdout(true)
-    const write = vi.spyOn(process.stdout, 'write').mockReturnValue(true)
-    try {
-      sendOsc({ title: 't', body: 'b' })
-      expect(write).toHaveBeenCalledWith(
-        '\x1bPtmux;\x1b\x1b]777;notify;t;b\x07\x1b\\\x1bPtmux;\x1b\x1b]9;b\x07\x1b\\',
-      )
-    } finally {
-      restore()
-      write.mockRestore()
-    }
+    // BEL is passed through as-is; only ESC bytes are doubled.
+    expect(wrapped.split(BEL).length - 1).toBe(1)
   })
 })

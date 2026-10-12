@@ -1,7 +1,8 @@
 import { execFile } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 
-import { sendOsc } from './osc.js'
+import type { ResolvedNotifyConfig } from './config.js'
+import { sendOscNotifications } from './osc.js'
 
 /**
  * WSL reports `process.platform === "linux"` but the user's desktop is Windows.
@@ -52,16 +53,11 @@ async function desktopNotify(title: string, body: string): Promise<void> {
   })
 }
 
-export interface NotifyOptions {
-  readonly osc: boolean
-  readonly desktop: boolean
-}
-
 export function notify(
   title: string,
   body: string,
-  { osc, desktop }: NotifyOptions,
+  config: Pick<ResolvedNotifyConfig, 'desktop' | 'osc777' | 'osc9'>,
 ): void {
-  if (osc) sendOsc({ title, body })
-  if (desktop) void desktopNotify(title, body).catch(() => {})
+  if (config.desktop) void desktopNotify(title, body).catch(() => {})
+  sendOscNotifications(title, body, config)
 }

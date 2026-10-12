@@ -31,10 +31,8 @@ export class NotifyTest {
       handler: async (args) => {
         await sleep(3000)
         this.titleTracker.mark()
-        notify(this.title, args.trim() || DEFAULT_BODY, {
-          osc: this.config.osc,
-          desktop: this.config.desktop,
-        })
+        const body = args.trim() || DEFAULT_BODY
+        notify(this.title, body, this.config)
       },
     })
   }

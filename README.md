@@ -27,8 +27,9 @@ All options live under the `piNotify` key in `~/.pi/agent/settings.json`. Everyt
     "enabled": true, // master on/off switch (default: true)
     "notifyTools": [], // tools that trigger "Tool call" notifications (default: empty, i.e. no tool notifications)
     "tmuxSymbol": "🔔", // symbol appended to tmux window title (empty string to disable)
-    "osc": true, // also emit OSC 777 / OSC 9 terminal escape-sequence notifications (default: true)
-    "desktop": true, // also send native desktop notifications via node-notifier / Windows toast (default: true)
+    "desktop": true, // send native desktop notifications via node-notifier / Windows toast (default: true)
+    "osc777": true, // emit terminal OSC 777 notifications, title + body (default: true)
+    "osc9": true, // emit terminal OSC 9 notifications, body only (default: true)
     "dashboardTmuxKey": "alt+d", // tmux jump key offered by default for the dashboard window (triggered directly; enable dashboardTmuxKeyNeedsPrefix for prefix + key)
     "dashboardTmuxKeyNeedsPrefix": false, // require the tmux prefix before the dashboard key (default: false, i.e. no prefix needed)
     "finished": true, // enable/disable "Idle" notification
@@ -90,3 +91,11 @@ Pass a string argument (e.g., `/notify-test hello`) to override the body.
 `@raidou/pi-notify` prefers `node-notifier` (macOS Notification Center, Linux `notify-send`, native Windows toaster).
 
 **WSL2 note:** `node-notifier` reports `process.platform === "linux"` and would route to `notify-send`, which is usually not installed under WSL and fails silently. `@raidou/pi-notify` detects WSL and raises a Windows toast via `powershell.exe` directly, so notifications reach the Windows Action Center out of the box.
+
+### Terminal notifications (OSC)
+
+Terminal notifications also work over SSH. Inside tmux (>= 3.3), add the following to `~/.tmux.conf`:
+
+```tmux
+set -g allow-passthrough all
+```

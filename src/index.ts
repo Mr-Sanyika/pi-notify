@@ -42,7 +42,7 @@ export default function piNotifyExtension(pi: ExtensionAPI): void {
       if (focusTracker.isFocused ?? recentlyActive) return
     }
     tmuxTitleTracker.mark()
-    notify(title, body, { osc: config.osc, desktop: config.desktop })
+    notify(title, body, config)
   }
 
   const registrables: Registerable[] = [

@@ -15,8 +15,9 @@ const ALL_DEFAULTS = {
   onlyNotifyWhenUnfocused: true,
   unfocusedActivityThresholdMs: 30000,
   tmuxSymbol: '🔔',
-  osc: true,
   desktop: true,
+  osc777: true,
+  osc9: true,
   dashboardTmuxKey: 'alt+d',
   dashboardTmuxKeyNeedsPrefix: false,
 }
@@ -54,8 +55,9 @@ describe('parseConfig', () => {
         onlyNotifyWhenUnfocused: false,
         unfocusedActivityThresholdSecs: 5,
         tmuxSymbol: '!',
-        osc: false,
         desktop: false,
+        osc777: false,
+        osc9: true,
         dashboardTmuxKey: 'ctrl+g',
         dashboardTmuxKeyNeedsPrefix: true,
       },
@@ -73,6 +75,16 @@ describe('parseConfig', () => {
       settings: { piNotify: 'x' },
       piNotify: {},
     })
+  })
+
+  it('respects explicit osc777/osc9 options', async () => {
+    const { readFileSync } = await import('node:fs')
+    vi.mocked(readFileSync).mockReturnValue(
+      JSON.stringify({ piNotify: { osc777: false, osc9: true } }),
+    )
+    const config = loadConfig()
+    expect(config.osc777).toBe(false)
+    expect(config.osc9).toBe(true)
   })
 
   it('falls back to empty piNotify on invalid field types', () => {
@@ -109,7 +121,6 @@ describe('loadConfig', () => {
     )
     const config = loadConfig()
     expect(config.desktop).toBe(false)
-    expect(config.osc).toBe(true)
   })
 
   it('returns all defaults and reads nothing when settings file is missing', async () => {
