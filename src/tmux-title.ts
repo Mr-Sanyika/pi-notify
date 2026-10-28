@@ -58,8 +58,8 @@ export class TmuxTitleTracker extends Registrar {
   }
 
   restore(): void {
-    // FIXME: 这里不需要判断 enable 吗
     if (
+      !this.enabled ||
       !this.modified ||
       this.windowId === undefined ||
       this.originalTitle === undefined

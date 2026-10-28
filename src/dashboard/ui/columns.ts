@@ -32,9 +32,9 @@ export function resolveColumns(
         session.unread !== true
           ? ''.padEnd(width)
           : theme.fg(
-            'syntaxKeyword',
-            truncateToWidth(notifySymbol, width, '…', true).padEnd(width),
-          ),
+              'syntaxKeyword',
+              truncateToWidth(notifySymbol, width, '…', true).padEnd(width),
+            ),
     },
     {
       name: '★',
@@ -100,9 +100,7 @@ export function resolveColumns(
         ),
     },
   ]
-  const columns = COLUMNS.filter(
-    (col) => includeHidden || !col.hiddenByDefault,
-  )
+  const columns = COLUMNS.filter((col) => includeHidden || !col.hiddenByDefault)
   const fixedWidth = sumBy(columns, (col) => col.width ?? 0)
   const separatorWidth = COLUMN_SEPARATOR.length * (columns.length - 1)
   const flexibleWidth = Math.max(

@@ -107,6 +107,7 @@ function parseSessionRecord(value: unknown): SessionRecord | undefined {
     return undefined
   }
   return {
+    ...record,
     pid: record.pid,
     sessionId: record.sessionId,
     cwd: record.cwd,
@@ -138,8 +139,8 @@ function parseState(data: string): DashboardState | undefined {
   for (const [key, value] of Object.entries(raw.sessions)) {
     sessions[key] = parseSessionRecord(value)
   }
-  // Records from older versions lack optional fields; they parse as-is.
-  return { version: 2, sessions }
+  const state: DashboardState = { ...raw, version: 2, sessions }
+  return state
 }
 
 export function readState(): DashboardState {

@@ -1,4 +1,4 @@
-import { rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 import {
@@ -386,6 +386,30 @@ describe('updateRecord', () => {
       unread: true,
     })
     expect(readState().sessions['1']).toEqual(updated)
+  })
+
+  it('keeps unknown fields from newer versions across a rewrite', async () => {
+    const state = {
+      version: 2,
+      future: 'kept',
+      sessions: {
+        '1': { ...makeRecord(1, 'one'), futureSession: 'kept' },
+      },
+    }
+    writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8')
+
+    await updateRecord(1, (existing) =>
+      existing === undefined ? undefined : { ...existing, unread: true },
+    )
+
+    const persisted = JSON.parse(readFileSync(STATE_FILE, 'utf8')) as {
+      future?: string
+      sessions: Record<string, { futureSession?: string; unread?: boolean }>
+    }
+    const record = persisted.sessions['1']
+    expect(persisted.future).toBe('kept')
+    expect(record?.futureSession).toBe('kept')
+    expect(record?.unread).toBe(true)
   })
 
   it('skips writing when update returns undefined', async () => {
