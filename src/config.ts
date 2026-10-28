@@ -19,7 +19,7 @@ const NotifyConfigSchema = Type.Object({
   finished: Type.Optional(Type.Boolean()),
   onlyNotifyWhenUnfocused: Type.Optional(Type.Boolean()),
   unfocusedActivityThresholdSecs: Type.Optional(Type.Number()),
-  tmuxSymbol: Type.Optional(Type.String()),
+  notifySymbol: Type.Optional(Type.String()),
   desktop: Type.Optional(Type.Boolean()),
   osc777: Type.Optional(Type.Boolean()),
   osc9: Type.Optional(Type.Boolean()),
@@ -35,7 +35,7 @@ export interface ResolvedNotifyConfig {
   readonly finished: boolean
   readonly onlyNotifyWhenUnfocused: boolean
   readonly unfocusedActivityThresholdMs: number
-  readonly tmuxSymbol: string
+  readonly notifySymbol: string
   readonly desktop: boolean
   readonly osc777: boolean
   readonly osc9: boolean
@@ -43,7 +43,7 @@ export interface ResolvedNotifyConfig {
   readonly dashboardTmuxKeyNeedsPrefix: boolean
 }
 
-const DEFAULT_TMUX_SYMBOL = '🔔'
+const DEFAULT_NOTIFY_SYMBOL = '🔔'
 export const DEFAULT_DASHBOARD_TMUX_KEY = 'alt+d'
 
 const SETTINGS_PATH = join(getAgentDir(), 'settings.json')
@@ -108,7 +108,7 @@ export function loadConfig(): ResolvedNotifyConfig {
       0,
       (cfg.unfocusedActivityThresholdSecs ?? 30) * 1000,
     ),
-    tmuxSymbol: cfg.tmuxSymbol ?? DEFAULT_TMUX_SYMBOL,
+    notifySymbol: cfg.notifySymbol ?? DEFAULT_NOTIFY_SYMBOL,
     desktop: cfg.desktop ?? true,
     osc777: cfg.osc777 ?? true,
     osc9: cfg.osc9 ?? true,

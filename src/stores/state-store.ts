@@ -50,14 +50,7 @@ export async function readSessions(): Promise<SessionRecord[]> {
     isProcessAlive(session.pid),
   )
 
-  const deadIds = dead.map((session) => String(session.pid))
-
-  if (deadIds.length > 0) {
-    await updateState((s) => {
-      const sessions: typeof s.sessions = omit(s.sessions, deadIds)
-      return { ...s, sessions }
-    })
-  }
+  await removePidRecords(dead.map((session) => session.pid))
 
   return orderBy(alive, [(session) => session.starred === true], ['desc'])
 }
@@ -65,20 +58,12 @@ export async function readSessions(): Promise<SessionRecord[]> {
 export async function toggleSessionStarred(
   pid: number,
 ): Promise<boolean | undefined> {
-  let starred: boolean | undefined
-  await updateState((state) => {
-    const existing = state.sessions[String(pid)]
-    if (existing === undefined) return state
-    starred = existing.starred !== true
-    return {
-      ...state,
-      sessions: {
-        ...state.sessions,
-        [String(pid)]: { ...existing, starred },
-      },
-    }
-  })
-  return starred
+  const record = await updateRecord(pid, (existing) =>
+    existing === undefined
+      ? undefined
+      : { ...existing, starred: existing.starred !== true },
+  )
+  return record?.starred
 }
 
 export interface SessionRecord {
@@ -90,6 +75,7 @@ export interface SessionRecord {
   state: SessionState
   startedRunningAt?: number
   starred?: boolean
+  unread?: boolean
 }
 
 export interface DashboardState {
@@ -132,6 +118,7 @@ function parseSessionRecord(value: unknown): SessionRecord | undefined {
         ? record.startedRunningAt
         : undefined,
     starred: typeof record.starred === 'boolean' ? record.starred : undefined,
+    unread: record.unread === true ? true : undefined,
   }
 }
 
@@ -168,9 +155,9 @@ export function readState(): DashboardState {
   }
 }
 
-export async function updateState(
-  mutator: (state: DashboardState) => DashboardState,
-): Promise<void> {
+async function withState(
+  apply: (state: DashboardState) => DashboardState | undefined,
+): Promise<DashboardState | undefined> {
   ensureStateDir()
   const release = await lockfile.lock(STATE_FILE, {
     realpath: false,
@@ -183,11 +170,40 @@ export async function updateState(
   })
 
   try {
-    const state = readState()
-    const newState = mutator(state)
+    const newState = apply(readState())
+    if (newState === undefined) return undefined
     writeFileSync(STATE_TMP_FILE, JSON.stringify(newState, null, 2), 'utf8')
     renameSync(STATE_TMP_FILE, STATE_FILE)
+    return newState
   } finally {
     await release()
   }
+}
+
+export async function removePidRecords(pids: number[]): Promise<void> {
+  if (pids.length === 0) return
+
+  await withState((state) => {
+    const sessions: typeof state.sessions = omit(
+      state.sessions,
+      pids.map(String),
+    )
+    return { ...state, sessions }
+  })
+}
+
+export async function updateRecord(
+  pid: number,
+  update: (existing: SessionRecord | undefined) => SessionRecord | undefined,
+): Promise<SessionRecord | undefined> {
+  const id = String(pid)
+  const state = await withState((current) => {
+    const record = update(current.sessions[id])
+    if (record === undefined) return undefined
+    return {
+      ...current,
+      sessions: { ...current.sessions, [id]: record },
+    }
+  })
+  return state?.sessions[id]
 }

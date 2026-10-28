@@ -26,7 +26,7 @@ All options live under the `piNotify` key in `~/.pi/agent/settings.json`. Everyt
   "piNotify": {
     "enabled": true, // master on/off switch (default: true)
     "notifyTools": [], // tools that trigger "Tool call" notifications (default: empty, i.e. no tool notifications)
-    "tmuxSymbol": "🔔", // symbol appended to tmux window title (empty string to disable)
+    "notifySymbol": "🔔", // symbol appended to tmux window title (empty string to disable)
     "desktop": true, // send native desktop notifications via node-notifier / Windows toast (default: true)
     "osc777": true, // emit terminal OSC 777 notifications, title + body (default: true)
     "osc9": true, // emit terminal OSC 9 notifications, body only (default: true)

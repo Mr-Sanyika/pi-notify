@@ -25,8 +25,8 @@ export class TmuxTitleTracker extends Registrar {
     this.config = config
   }
 
-  get enabled(): boolean {
-    return this.config.tmuxSymbol.length > 0
+  private get enabled(): boolean {
+    return this.config.notifySymbol.length > 0
   }
 
   protected override setup(notify: NotifyAction): void {
@@ -52,12 +52,13 @@ export class TmuxTitleTracker extends Registrar {
       return
     this.renameWindow(
       this.windowId,
-      `${this.originalTitle}${this.config.tmuxSymbol}`,
+      `${this.originalTitle}${this.config.notifySymbol}`,
     )
     this.modified = true
   }
 
   restore(): void {
+    // FIXME: 这里不需要判断 enable 吗
     if (
       !this.modified ||
       this.windowId === undefined ||

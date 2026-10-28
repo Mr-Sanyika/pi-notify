@@ -95,7 +95,7 @@ const BASE_CONFIG: ResolvedNotifyConfig = {
   finished: true,
   onlyNotifyWhenUnfocused: true,
   unfocusedActivityThresholdMs: 0,
-  tmuxSymbol: '',
+  notifySymbol: '',
 } as unknown as ResolvedNotifyConfig
 
 function makeTracker(

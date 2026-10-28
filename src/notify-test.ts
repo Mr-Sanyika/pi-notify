@@ -3,26 +3,26 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 import type { ResolvedNotifyConfig } from './config.js'
 import { notify } from './notifier.js'
 import { sleep } from './shared/utils.js'
-import type { TmuxTitleTracker } from './tmux-title.js'
+import type { UnreadTracker } from './unread-tracker.js'
 
 const DEFAULT_BODY = 'This is a test notification.'
 
 export class NotifyTest {
   private readonly pi: ExtensionAPI
   private readonly title: string
-  private readonly titleTracker: TmuxTitleTracker
   private readonly config: ResolvedNotifyConfig
+  private readonly unreadTracker: UnreadTracker
 
   constructor(
     pi: ExtensionAPI,
     title: string,
-    titleTracker: TmuxTitleTracker,
     config: ResolvedNotifyConfig,
+    unreadTracker: UnreadTracker,
   ) {
     this.pi = pi
     this.title = title
-    this.titleTracker = titleTracker
     this.config = config
+    this.unreadTracker = unreadTracker
   }
 
   register(): void {
@@ -30,7 +30,7 @@ export class NotifyTest {
       description: 'Fire a test notification',
       handler: async (args) => {
         await sleep(3000)
-        this.titleTracker.mark()
+        this.unreadTracker.markUnread()
         const body = args.trim() || DEFAULT_BODY
         notify(this.title, body, this.config)
       },

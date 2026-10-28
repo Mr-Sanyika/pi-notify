@@ -25,6 +25,7 @@ interface DashboardHandle {
 
 function runDashboard(
   initialSessions: SessionRecord[],
+  notifySymbol: string,
 ): Promise<DashboardHandle> {
   return new Promise((resolve) => {
     const terminal = new ProcessTerminal()
@@ -39,6 +40,7 @@ function runDashboard(
       },
       theme,
       initialSessions,
+      notifySymbol,
       loadSessions: () => readSessions(),
       onClose: finish,
     })
@@ -100,9 +102,9 @@ function runDashboard(
 }
 
 async function main(): Promise<void> {
+  const cfg = loadConfig()
   if (inTmux) {
     markDashboardTmuxPane()
-    const cfg = loadConfig()
     registerDashboardTmuxBinding(
       cfg.dashboardTmuxKey,
       cfg.dashboardTmuxKeyNeedsPrefix,
@@ -113,7 +115,7 @@ async function main(): Promise<void> {
 
   let exitCode = 0
   try {
-    const dashboard = await runDashboard(initialSessions)
+    const dashboard = await runDashboard(initialSessions, cfg.notifySymbol)
     await dashboard.stop()
   } catch (err) {
     console.error(err)

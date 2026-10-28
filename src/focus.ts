@@ -1,25 +1,18 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 
-import type { ResolvedNotifyConfig } from './config.js'
 import { FocusInputScanner } from './focus-scanner.js'
 import { Registrar } from './shared/registrar.js'
-import type { TmuxTitleTracker } from './tmux-title.js'
+import type { UnreadTracker } from './unread-tracker.js'
 
 export class FocusTracker extends Registrar {
-  private readonly titleTracker: TmuxTitleTracker
-  private readonly config: ResolvedNotifyConfig
   private readonly scanner: FocusInputScanner
+  private readonly unreadTracker: UnreadTracker
   private _focused: boolean | undefined = undefined
   private _lastActivityAt = Date.now()
 
-  constructor(
-    pi: ExtensionAPI,
-    titleTracker: TmuxTitleTracker,
-    config: ResolvedNotifyConfig,
-  ) {
+  constructor(pi: ExtensionAPI, unreadTracker: UnreadTracker) {
     super(pi)
-    this.titleTracker = titleTracker
-    this.config = config
+    this.unreadTracker = unreadTracker
     this.scanner = new FocusInputScanner({
       onActivity: () => {
         this.touch()
@@ -27,7 +20,9 @@ export class FocusTracker extends Registrar {
       onFocus: (focused) => {
         this.touch()
         this._focused = focused
-        if (focused) this.titleTracker.restore()
+        if (focused) {
+          this.unreadTracker.clearUnread()
+        }
       },
     })
   }
@@ -46,10 +41,7 @@ export class FocusTracker extends Registrar {
 
   protected override setup(): void {
     this.pi.on('session_start', (_event, ctx) => {
-      const activate =
-        ctx.mode === 'tui' &&
-        (this.titleTracker.enabled || this.config.onlyNotifyWhenUnfocused)
-      if (!activate) return
+      if (ctx.mode !== 'tui') return
       this.touch()
       this.scanner.start()
     })

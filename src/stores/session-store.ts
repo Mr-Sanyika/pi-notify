@@ -6,8 +6,7 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 import { Registrar } from '../shared/registrar.js'
 import type { StateTracker } from '../state-tracker.js'
 import { ACTIVITY_EVENT_PREFIXES, type SessionState } from './consts.js'
-import type { SessionRecord } from './state-store.js'
-import { updateState } from './state-store.js'
+import { updateRecord } from './state-store.js'
 
 export class SessionStore extends Registrar {
   private readonly stateTracker: StateTracker
@@ -26,28 +25,20 @@ export class SessionStore extends Registrar {
     const now = Date.now()
     const meta = this.meta
     const sessionId = this.sessionId
-    const id = String(meta.pid)
 
-    await updateState((state) => {
-      const existing = state.sessions[id]
+    await updateRecord(meta.pid, (existing) => {
       const isRunning = nextState === 'running'
 
-      const startRunningAt = isRunning ? now : undefined
-
-      const record: SessionRecord = {
+      return {
         pid: meta.pid,
         sessionId,
         cwd: meta.cwd,
         projectName: meta.projectName,
         startedAt: existing?.startedAt ?? now,
         starred: existing?.starred,
+        unread: existing?.unread,
         state: nextState,
-        startedRunningAt: startRunningAt,
-      }
-
-      return {
-        ...state,
-        sessions: { ...state.sessions, [id]: record },
+        startedRunningAt: isRunning ? now : undefined,
       }
     })
   }
@@ -83,6 +74,22 @@ export class SessionStore extends Registrar {
           await this.saveSession(`${prefix}${data}`)
         }),
       ),
+    )
+  }
+
+  async markUnread(): Promise<void> {
+    await this.setUnread(true)
+  }
+
+  async clearUnread(): Promise<void> {
+    await this.setUnread(undefined)
+  }
+
+  private async setUnread(unread: boolean | undefined): Promise<void> {
+    if (this.meta === undefined) return
+
+    await updateRecord(this.meta.pid, (existing) =>
+      existing === undefined ? undefined : { ...existing, unread },
     )
   }
 }

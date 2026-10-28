@@ -11,6 +11,7 @@ export interface DashboardProps {
   tui: { requestRender: () => void }
   theme: Theme
   initialSessions: SessionRecord[]
+  notifySymbol: string
   loadSessions: () => Promise<SessionRecord[]>
   onClose: () => void
   onDispose?: () => void
@@ -34,6 +35,7 @@ export class Dashboard implements Component {
     tui,
     theme,
     initialSessions,
+    notifySymbol,
     loadSessions,
     onClose,
     onDispose,
@@ -46,6 +48,7 @@ export class Dashboard implements Component {
       tui,
       theme,
       initialSessions,
+      notifySymbol,
       onRefresh: () => {
         this.refresh()
       },

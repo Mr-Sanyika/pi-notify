@@ -1,4 +1,4 @@
-import { rmSync, unlinkSync } from 'node:fs'
+import { rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
@@ -32,7 +32,12 @@ import type { JobTracker } from '../jobs.js'
 import { StateTracker } from '../state-tracker.js'
 import { STATE_FILE } from './consts.js'
 import { SessionStore } from './session-store.js'
-import { readState, updateState } from './state-store.js'
+import type { DashboardState } from './state-store.js'
+import { readState } from './state-store.js'
+
+function writeState(state: DashboardState): void {
+  writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8')
+}
 
 type EventsListener = (payload: unknown) => void
 
@@ -185,7 +190,7 @@ describe('SessionStore', () => {
     } catch {
       // ignore
     }
-    await updateState(() => ({ version: 2, sessions: {} }))
+    writeState({ version: 2, sessions: {} })
   })
 
   afterEach(() => {
@@ -366,16 +371,15 @@ describe('SessionStore', () => {
     emitSessionStart(pi)
     await new Promise((resolve) => setTimeout(resolve, 10))
 
-    await updateState((state) => {
-      const record = state.sessions[String(process.pid)]
-      if (record === undefined) return state
-      return {
-        ...state,
-        sessions: {
-          ...state.sessions,
-          [String(process.pid)]: { ...record, starred: true },
-        },
-      }
+    const record = readState().sessions[String(process.pid)]
+    expect(record).toBeDefined()
+    if (record === undefined) return
+    writeState({
+      version: 2,
+      sessions: {
+        ...readState().sessions,
+        [String(process.pid)]: { ...record, starred: true },
+      },
     })
 
     stateTracker.events.emit('running')
@@ -385,5 +389,93 @@ describe('SessionStore', () => {
     await new Promise((resolve) => setTimeout(resolve, 10))
 
     expect(readState().sessions[String(process.pid)]?.starred).toBe(true)
+  })
+})
+
+describe('SessionStore unread', () => {
+  const testLockFile = `${STATE_FILE}.lock`
+
+  beforeEach(async () => {
+    try {
+      unlinkSync(testLockFile)
+    } catch {
+      // ignore
+    }
+    writeState({ version: 2, sessions: {} })
+  })
+
+  afterEach(() => {
+    try {
+      unlinkSync(testLockFile)
+    } catch {
+      // ignore
+    }
+  })
+
+  function makeStartedStore(): {
+    pi: FakePi
+    stateTracker: FakeStateTracker
+    store: SessionStore
+  } {
+    const pi = makeFakePi()
+    const stateTracker = makeFakeStateTracker()
+    const store = makeStore(pi, stateTracker)
+    emitSessionStart(pi)
+    return { pi, stateTracker, store }
+  }
+
+  async function wait(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+
+  it('marks unread and keeps other fields', async () => {
+    const { store } = makeStartedStore()
+    await wait()
+
+    await store.markUnread()
+
+    const record = readState().sessions[String(process.pid)]
+    expect(record?.unread).toBe(true)
+    expect(record?.sessionId).toBe(SESSION_ID)
+    expect(record?.state).toBe('idle')
+  })
+
+  it('clears unread without touching other fields', async () => {
+    const { store } = makeStartedStore()
+    await wait()
+    await store.markUnread()
+
+    await store.clearUnread()
+    await wait()
+
+    const record = readState().sessions[String(process.pid)]
+    expect(record?.unread).toBeUndefined()
+    expect(record?.sessionId).toBe(SESSION_ID)
+  })
+
+  it('preserves unread across state updates', async () => {
+    const { stateTracker, store } = makeStartedStore()
+    await wait()
+    await store.markUnread()
+
+    stateTracker.events.emit('running')
+    await wait()
+    stateTracker.events.emit('idle')
+    await wait()
+
+    const record = readState().sessions[String(process.pid)]
+    expect(record?.unread).toBe(true)
+    expect(record?.state).toBe('idle')
+  })
+
+  it('skips unknown session records without creating orphans', async () => {
+    const pi = makeFakePi()
+    const stateTracker = makeFakeStateTracker()
+    const store = makeStore(pi, stateTracker)
+
+    await store.markUnread()
+    await store.clearUnread()
+
+    expect(readState().sessions).toEqual({})
   })
 })

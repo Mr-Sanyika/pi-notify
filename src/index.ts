@@ -13,6 +13,7 @@ import { StateTracker } from './state-tracker.js'
 import { SessionState } from './states.js'
 import { SessionStore } from './stores/session-store.js'
 import { TmuxTitleTracker } from './tmux-title.js'
+import { UnreadTracker } from './unread-tracker.js'
 
 export { JOB_END_EVENT, JOB_START_EVENT } from './jobs.js'
 export { PI_NOTIFY_EVENT } from './state-tracker.js'
@@ -23,12 +24,16 @@ export default function piNotifyExtension(pi: ExtensionAPI): void {
   const title = `pi — ${dirName}`
 
   const tmuxTitleTracker = new TmuxTitleTracker(pi, config)
-  const focusTracker = new FocusTracker(pi, tmuxTitleTracker, config)
   const jobTracker = new JobTracker(pi)
   const stateTracker = new StateTracker(pi, jobTracker, config)
-  const notifyTest = new NotifyTest(pi, title, tmuxTitleTracker, config)
-  const sessionState = new SessionState(pi)
   const sessionStore = new SessionStore(pi, stateTracker)
+  const unreadTracker = new UnreadTracker({
+    titleTracker: tmuxTitleTracker,
+    sessionStore,
+  })
+  const focusTracker = new FocusTracker(pi, unreadTracker)
+  const notifyTest = new NotifyTest(pi, title, config, unreadTracker)
+  const sessionState = new SessionState(pi)
   const dashboardCommand = new DashboardCommand(pi)
 
   function notifyReal(body: string): void {
@@ -41,7 +46,7 @@ export default function piNotifyExtension(pi: ExtensionAPI): void {
         config.unfocusedActivityThresholdMs
       if (focusTracker.isFocused ?? recentlyActive) return
     }
-    tmuxTitleTracker.mark()
+    unreadTracker.markUnread()
     notify(title, body, config)
   }
 

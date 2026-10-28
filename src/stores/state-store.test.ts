@@ -31,14 +31,30 @@ afterAll(() => {
 })
 
 import { STATE_FILE } from './consts.js'
-import type { SessionRecord } from './state-store.js'
+import type { DashboardState, SessionRecord } from './state-store.js'
 import {
   isProcessAlive,
   readSessions,
   readState,
+  removePidRecords,
   toggleSessionStarred,
-  updateState,
+  updateRecord,
 } from './state-store.js'
+
+function writeState(state: DashboardState): void {
+  writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8')
+}
+
+function makeRecord(pid: number, sessionId: string): SessionRecord {
+  return {
+    pid,
+    sessionId,
+    cwd: '/tmp',
+    projectName: sessionId,
+    startedAt: 0,
+    state: 'idle',
+  }
+}
 
 describe('readState', () => {
   const testLockFile = `${STATE_FILE}.lock`
@@ -53,7 +69,7 @@ describe('readState', () => {
   })
 
   it('writes state with version 2', async () => {
-    await updateState((state) => ({ ...state, sessions: {} }))
+    writeState({ version: 2, sessions: {} })
     expect(readState().version).toBe(2)
   })
 
@@ -168,7 +184,7 @@ describe('readSessions', () => {
     } catch {
       // ignore
     }
-    await updateState(() => ({ version: 2, sessions: {} }))
+    writeState({ version: 2, sessions: {} })
   })
 
   afterEach(() => {
@@ -186,10 +202,9 @@ describe('readSessions', () => {
     const aliveKey = String(process.pid)
     const deadKey = String(deadPid)
 
-    await updateState((state) => ({
-      ...state,
+    writeState({
+      version: 2,
       sessions: {
-        ...state.sessions,
         [aliveKey]: {
           pid: process.pid,
           sessionId: aliveSessionId,
@@ -207,7 +222,7 @@ describe('readSessions', () => {
           state: 'running',
         },
       },
-    }))
+    })
 
     const alive = await readSessions()
 
@@ -222,10 +237,9 @@ describe('readSessions', () => {
   it('returns all sessions when none are dead', async () => {
     const sessionId = `all-alive-${Date.now()}`
 
-    await updateState((state) => ({
-      ...state,
+    writeState({
+      version: 2,
       sessions: {
-        ...state.sessions,
         [sessionId]: {
           pid: process.pid,
           sessionId,
@@ -235,7 +249,7 @@ describe('readSessions', () => {
           state: 'running',
         },
       },
-    }))
+    })
 
     const alive = await readSessions()
 
@@ -243,7 +257,51 @@ describe('readSessions', () => {
   })
 })
 
-describe('updateState', () => {
+describe('removePidRecords', () => {
+  const testLockFile = `${STATE_FILE}.lock`
+
+  beforeEach(async () => {
+    try {
+      unlinkSync(testLockFile)
+    } catch {
+      // ignore
+    }
+    writeState({ version: 2, sessions: {} })
+  })
+
+  afterEach(() => {
+    try {
+      unlinkSync(testLockFile)
+      unlinkSync(STATE_FILE)
+    } catch {
+      // ignore
+    }
+  })
+
+  it('removes only the given pids and keeps other records', async () => {
+    const kept = makeRecord(1, 'kept')
+    const removed = makeRecord(2, 'removed')
+    writeState({
+      version: 2,
+      sessions: { '1': kept, '2': removed },
+    })
+
+    await removePidRecords([2])
+
+    expect(readState().sessions).toEqual({ '1': kept })
+  })
+
+  it('does nothing for an empty pid list', async () => {
+    const record = makeRecord(1, 'kept')
+    writeState({ version: 2, sessions: { '1': record } })
+
+    await removePidRecords([])
+
+    expect(readState().sessions).toEqual({ '1': record })
+  })
+})
+
+describe('state locking', () => {
   const testLockFile = `${STATE_FILE}.lock`
 
   beforeEach(() => {
@@ -262,72 +320,82 @@ describe('updateState', () => {
     }
   })
 
-  it('writes state and preserves other fields', async () => {
-    await updateState((state) => ({
-      ...state,
-      sessions: {
-        ...state.sessions,
-        'test-session-1': {
-          pid: process.pid,
-          sessionId: 'test-session-1',
-          cwd: process.cwd(),
-          projectName: 'test-project',
-          startedAt: Date.now(),
-          state: 'running',
-        },
-      },
-    }))
-  })
-
   it('handles concurrent updates correctly', async () => {
-    const sessionId = `test-concurrent-${Date.now()}`
-
-    await updateState((state) => ({
-      ...state,
-      sessions: {
-        ...state.sessions,
-        [sessionId]: {
-          pid: process.pid,
-          sessionId,
-          cwd: process.cwd(),
-          projectName: 'concurrent-test',
-          startedAt: Date.now(),
-          state: 'running',
-        },
-      },
-    }))
+    writeState({ version: 2, sessions: { '1': makeRecord(1, 'one') } })
 
     await Promise.all([
-      updateState((state) => ({
-        ...state,
-        sessions: {
-          ...state.sessions,
-          [sessionId]: state.sessions[sessionId]
-            ? {
-                ...state.sessions[sessionId],
-                startedAt: Date.now(),
-              }
-            : undefined,
-        },
-      })),
-      updateState((state) => ({
-        ...state,
-        sessions: {
-          ...state.sessions,
-          [sessionId]: state.sessions[sessionId]
-            ? {
-                ...state.sessions[sessionId],
-                startedAt: Date.now() + 1,
-              }
-            : undefined,
-        },
-      })),
+      updateRecord(1, (existing) =>
+        existing === undefined ? undefined : { ...existing, starred: true },
+      ),
+      updateRecord(1, (existing) =>
+        existing === undefined ? undefined : { ...existing, unread: true },
+      ),
     ])
 
-    await updateState((state) => {
-      expect(state.sessions[sessionId]).toBeDefined()
-      return state
+    expect(readState().sessions['1']).toEqual({
+      ...makeRecord(1, 'one'),
+      starred: true,
+      unread: true,
     })
+  })
+})
+
+describe('updateRecord', () => {
+  const testLockFile = `${STATE_FILE}.lock`
+
+  beforeEach(async () => {
+    try {
+      unlinkSync(testLockFile)
+    } catch {
+      // ignore
+    }
+    writeState({ version: 2, sessions: {} })
+  })
+
+  afterEach(() => {
+    try {
+      unlinkSync(testLockFile)
+      unlinkSync(STATE_FILE)
+    } catch {
+      // ignore
+    }
+  })
+
+  it('creates a record when none exists', async () => {
+    const record = makeRecord(1, 'one')
+
+    await expect(
+      updateRecord(1, (existing) => existing ?? record),
+    ).resolves.toEqual(record)
+    expect(readState().sessions['1']).toEqual(record)
+  })
+
+  it('patches a record and keeps other fields', async () => {
+    writeState({
+      version: 2,
+      sessions: { '1': { ...makeRecord(1, 'one'), starred: true } },
+    })
+
+    const updated = await updateRecord(1, (existing) =>
+      existing === undefined ? undefined : { ...existing, unread: true },
+    )
+
+    expect(updated).toEqual({
+      ...makeRecord(1, 'one'),
+      starred: true,
+      unread: true,
+    })
+    expect(readState().sessions['1']).toEqual(updated)
+  })
+
+  it('skips writing when update returns undefined', async () => {
+    const record = makeRecord(1, 'one')
+    writeState({ version: 2, sessions: { '1': record } })
+
+    await expect(
+      updateRecord(999, (existing) => existing),
+    ).resolves.toBeUndefined()
+    expect(readState().sessions).toEqual({ '1': record })
   })
 })
 
@@ -340,7 +408,7 @@ describe('toggleSessionStarred', () => {
     } catch {
       // ignore
     }
-    await updateState(() => ({ version: 2, sessions: {} }))
+    writeState({ version: 2, sessions: {} })
   })
 
   afterEach(() => {
@@ -353,8 +421,8 @@ describe('toggleSessionStarred', () => {
   })
 
   async function seedSessions(): Promise<void> {
-    await updateState((state) => ({
-      ...state,
+    writeState({
+      version: 2,
       sessions: {
         '1': {
           pid: 1,
@@ -373,7 +441,7 @@ describe('toggleSessionStarred', () => {
           state: 'idle',
         },
       },
-    }))
+    })
   }
 
   it('flips starred on and persists it', async () => {
@@ -407,7 +475,7 @@ describe('readSessions starred ordering', () => {
     } catch {
       // ignore
     }
-    await updateState(() => ({ version: 2, sessions: {} }))
+    writeState({ version: 2, sessions: {} })
   })
 
   afterEach(() => {
@@ -419,25 +487,14 @@ describe('readSessions starred ordering', () => {
     }
   })
 
-  function makeRecord(pid: number, sessionId: string): SessionRecord {
-    return {
-      pid,
-      sessionId,
-      cwd: '/tmp',
-      projectName: sessionId,
-      startedAt: 0,
-      state: 'idle',
-    }
-  }
-
   it('sorts starred sessions first, keeping the rest stable', async () => {
     const first = { ...makeRecord(1, 'one') }
     const second = { ...makeRecord(2, 'two'), starred: true }
     const third = { ...makeRecord(3, 'three') }
-    await updateState((state) => ({
-      ...state,
+    writeState({
+      version: 2,
       sessions: { '1': first, '2': second, '3': third },
-    }))
+    })
 
     await expect(readSessions()).resolves.toEqual([second, first, third])
   })
@@ -445,10 +502,10 @@ describe('readSessions starred ordering', () => {
   it('keeps unstarred order unchanged', async () => {
     const first = makeRecord(1, 'one')
     const second = makeRecord(2, 'two')
-    await updateState((state) => ({
-      ...state,
+    writeState({
+      version: 2,
       sessions: { '1': first, '2': second },
-    }))
+    })
 
     await expect(readSessions()).resolves.toEqual([first, second])
   })
@@ -481,5 +538,37 @@ describe('parseSessionRecord starred round-trip', () => {
     expect(sessions['1']?.starred).toBe(true)
     expect(sessions['2']?.starred).toBe(false)
     expect(sessions['3']?.starred).toBeUndefined()
+  })
+})
+
+describe('parseSessionRecord unread round-trip', () => {
+  it('keeps only true as unread', () => {
+    const base = {
+      pid: 1,
+      sessionId: 'one',
+      cwd: '/tmp',
+      projectName: 'one',
+      startedAt: 0,
+      state: 'idle',
+    }
+    writeFileSync(
+      STATE_FILE,
+      JSON.stringify({
+        version: 2,
+        sessions: {
+          '1': { ...base, unread: true },
+          '2': { ...base, sessionId: 'two', unread: false },
+          '3': { ...base, sessionId: 'three', unread: 'yes' },
+          '4': { ...base, sessionId: 'four' },
+        },
+      }),
+      'utf8',
+    )
+
+    const sessions = readState().sessions
+    expect(sessions['1']?.unread).toBe(true)
+    expect(sessions['2']?.unread).toBeUndefined()
+    expect(sessions['3']?.unread).toBeUndefined()
+    expect(sessions['4']?.unread).toBeUndefined()
   })
 })

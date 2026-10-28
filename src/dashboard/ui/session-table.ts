@@ -25,6 +25,7 @@ export interface SessionTableProps {
   tui: { requestRender: () => void }
   theme: Theme
   initialSessions: SessionRecord[]
+  notifySymbol: string
   onRefresh: () => void
   onToggleStar: (session: SessionRecord) => void
   onKillRequest: (session: SessionRecord) => void
@@ -40,6 +41,7 @@ export class SessionTable implements Component {
   private readonly onKillRequest: SessionTableProps['onKillRequest']
   private readonly onJump: SessionTableProps['onJump']
   private readonly onClose: SessionTableProps['onClose']
+  private readonly notifySymbol: string
   private sessions: SessionRecord[]
   private selectedIndex = 0
   private showHidden = false
@@ -63,6 +65,7 @@ export class SessionTable implements Component {
     onKillRequest,
     onJump,
     onClose,
+    notifySymbol,
   }: SessionTableProps) {
     this.tui = tui
     this.theme = theme
@@ -71,6 +74,7 @@ export class SessionTable implements Component {
     this.onKillRequest = onKillRequest
     this.onJump = onJump
     this.onClose = onClose
+    this.notifySymbol = notifySymbol
     this.sessions = [...initialSessions]
   }
 
@@ -133,7 +137,11 @@ export class SessionTable implements Component {
       return this.cachedLines
     }
     const tableWidth = width - 2
-    const columns = resolveColumns(tableWidth, this.showHidden)
+    const columns = resolveColumns(
+      tableWidth,
+      this.showHidden,
+      this.notifySymbol,
+    )
     const lines = [
       this.summaryLine(width),
       '',

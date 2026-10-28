@@ -52,6 +52,7 @@ function makeDashboard(
   overrides: Partial<{
     loadSessions: () => Promise<SessionRecord[]>
     onClose: () => void
+    notifySymbol: string
   }> = {},
 ) {
   const loadSessions = overrides.loadSessions ?? (async () => sessions)
@@ -59,6 +60,7 @@ function makeDashboard(
     tui: { requestRender: () => {} },
     theme,
     initialSessions: sessions,
+    notifySymbol: overrides.notifySymbol ?? '',
     loadSessions,
     onClose: overrides.onClose ?? (() => {}),
   })
@@ -92,7 +94,7 @@ describe('Dashboard render clipping', () => {
     const header = visible.find((l) => l.includes('STATE'))
     expect(header).toBeDefined()
     if (!header) throw new Error('unreachable')
-    expect(header.startsWith('  ★')).toBe(true)
+    expect(header.startsWith('  🔔 ★')).toBe(true)
     expect(header.endsWith('…')).toBe(true)
     const footer = visible.filter((l) => l.startsWith('['))
     expect(footer).toEqual([
@@ -162,7 +164,7 @@ describe('Dashboard render clipping', () => {
     if (!header || !row) throw new Error('unreachable')
     expect(header.indexOf('★')).toBe(row.indexOf('★'))
     expect(header.indexOf('PROJECT')).toBe(row.indexOf('proj'))
-    expect(header.indexOf('STATE')).toBe(5)
+    expect(header.indexOf('STATE')).toBe(8)
     dashboard.dispose()
   })
 
@@ -723,5 +725,95 @@ describe('kill confirmation', () => {
     dashboard.handleInput('r')
     await flush()
     expect(confirming()).toBe(false)
+  })
+})
+
+describe('Dashboard unread icon', () => {
+  it('renders the icon only on unread session rows and keeps columns aligned', () => {
+    const dashboard = makeDashboard(
+      [
+        makeSession({ pid: 1, projectName: 'bell-proj', unread: true }),
+        makeSession({ pid: 2, projectName: 'plain-proj' }),
+      ],
+      { notifySymbol: '🔔' },
+    )
+    const rows = dashboard.render(200).map(stripAnsi)
+    const unreadRow = rows.find((l) => l.includes('bell-proj'))
+    const readRow = rows.find((l) => l.includes('plain-proj'))
+    expect(unreadRow).toBeDefined()
+    expect(readRow).toBeDefined()
+    if (!unreadRow || !readRow) throw new Error('unreachable')
+    expect(unreadRow.includes('🔔')).toBe(true)
+    expect(readRow.includes('🔔')).toBe(false)
+    expect(readRow.indexOf('plain-proj')).toBe(unreadRow.indexOf('bell-proj'))
+    dashboard.dispose()
+  })
+
+  it('aligns the header with data rows when the unread symbol is set', () => {
+    const dashboard = makeDashboard(
+      [
+        makeSession({ pid: 1, projectName: 'bell-proj', unread: true }),
+        makeSession({ pid: 2, projectName: 'plain-proj' }),
+      ],
+      { notifySymbol: '🔔' },
+    )
+    const rows = dashboard.render(200).map(stripAnsi)
+    const header = rows.find((l) => l.includes('PROJECT'))
+    expect(header).toBeDefined()
+    if (!header) throw new Error('unreachable')
+    const rowsByProject = ['bell-proj', 'plain-proj'].map((project) => {
+      const row = rows.find((l) => l.includes(project))
+      expect(row).toBeDefined()
+      if (!row) throw new Error('unreachable')
+      return [project, row] as const
+    })
+    for (const [project, row] of rowsByProject) {
+      expect(header.indexOf('PROJECT')).toBe(row.indexOf(project))
+    }
+    dashboard.dispose()
+  })
+
+  it('aligns the header with data rows when the unread symbol is empty', () => {
+    const dashboard = makeDashboard([
+      makeSession({ pid: 1, projectName: 'bell-proj', unread: true }),
+    ])
+    const rows = dashboard.render(200).map(stripAnsi)
+    const header = rows.find((l) => l.includes('PROJECT'))
+    const row = rows.find((l) => l.includes('bell-proj'))
+    expect(header).toBeDefined()
+    expect(row).toBeDefined()
+    if (!header || !row) throw new Error('unreachable')
+    expect(header.indexOf('PROJECT')).toBe(row.indexOf('bell-proj'))
+    dashboard.dispose()
+  })
+
+  it('does not truncate the last column when the unread symbol is set', () => {
+    const dashboard = makeDashboard(
+      [makeSession({ pid: 1, projectName: 'proj', unread: true })],
+      { notifySymbol: '🔔' },
+    )
+    const rows = dashboard.render(200).map(stripAnsi)
+    const row = rows.find((l) => l.includes('proj'))
+    expect(row).toBeDefined()
+    if (!row) throw new Error('unreachable')
+    expect(row.includes('0s')).toBe(true)
+    expect(visibleWidth(row)).toBe(200)
+    dashboard.dispose()
+  })
+
+  it('keeps the empty-symbol column as a placeholder when the unread symbol is empty', () => {
+    const dashboard = makeDashboard([
+      makeSession({ pid: 1, projectName: 'bell-proj', unread: true }),
+    ])
+    const rows = dashboard.render(200).map(stripAnsi)
+    const header = rows.find((l) => l.includes('PROJECT'))
+    const row = rows.find((l) => l.includes('bell-proj'))
+    expect(header).toBeDefined()
+    expect(row).toBeDefined()
+    if (!header || !row) throw new Error('unreachable')
+    expect(header.includes('🔔')).toBe(true)
+    expect(row.includes('🔔')).toBe(false)
+    expect(header.indexOf('PROJECT')).toBe(row.indexOf('bell-proj'))
+    dashboard.dispose()
   })
 })
