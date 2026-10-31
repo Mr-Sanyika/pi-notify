@@ -13,13 +13,34 @@ export class SessionStore extends Registrar {
   private sessionId: string | undefined = undefined
   private meta: { pid: number; cwd: string; projectName: string } | undefined =
     undefined
+  private writeQueue: Promise<void> = Promise.resolve()
 
   constructor(pi: ExtensionAPI, stateTracker: StateTracker) {
     super(pi)
     this.stateTracker = stateTracker
   }
 
+  /**
+   * Queue a state write behind the previous one and keep the queue usable
+   * after a failure. Writes are already serialized by the lock file; this also
+   * gives callers (and tests) a handle to wait on.
+   */
+  private queueWrite(write: () => Promise<void>): void {
+    this.writeQueue = this.writeQueue.then(write, write)
+  }
+
+  /** Resolves once every queued state write has settled. */
+  async flush(): Promise<void> {
+    await this.writeQueue
+  }
+
   private async saveSession(nextState: SessionState): Promise<void> {
+    this.queueWrite(async () => {
+      await this.writeSession(nextState)
+    })
+  }
+
+  private async writeSession(nextState: SessionState): Promise<void> {
     if (this.sessionId === undefined || this.meta === undefined) return
 
     const now = Date.now()

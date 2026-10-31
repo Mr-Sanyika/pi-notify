@@ -39,6 +39,44 @@ function writeState(state: DashboardState): void {
   writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8')
 }
 
+/**
+ * Wait until no state write is in flight.
+ *
+ * Writes are fire-and-forget (lock → read → write tmp → rename), so a fixed
+ * sleep races with the writer under load. Poll instead: the state is settled
+ * once no lock file exists and `state.json` has not been rewritten for a few
+ * consecutive polls. Every rewrite restarts the window, so a write that
+ * completes between two samples is still observed.
+ */
+function makeStore(pi: FakePi, stateTracker: FakeStateTracker): SessionStore {
+  const store = new SessionStore(
+    pi as unknown as ExtensionAPI,
+    stateTracker as unknown as StateTracker,
+  )
+  store.register(() => {})
+  activeStore = store
+  return store
+}
+
+let activeStore: SessionStore | undefined
+
+/**
+ * Wait for every state write queued so far to settle.
+ *
+ * The write path is fire-and-forget, so a fixed sleep races with the writer
+ * under load. `flush()` drains the store's write queue instead.
+ */
+async function settle(): Promise<void> {
+  const store = activeStore
+  if (store === undefined) return
+  // Emittery dispatches listeners asynchronously, so let queued emits run
+  // before and after draining the store's write queue.
+  for (let round = 0; round < 3; round += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await store.flush()
+  }
+}
+
 type EventsListener = (payload: unknown) => void
 
 interface FakeStateTracker {
@@ -143,15 +181,6 @@ const META = {
   projectName: 'test-project',
 }
 
-function makeStore(pi: FakePi, stateTracker: FakeStateTracker): SessionStore {
-  const store = new SessionStore(
-    pi as unknown as ExtensionAPI,
-    stateTracker as unknown as StateTracker,
-  )
-  store.register(() => {})
-  return store
-}
-
 function emitSessionStart(pi: FakePi): void {
   pi.emitSessionStart({
     cwd: META.cwd,
@@ -231,16 +260,16 @@ describe('SessionStore', () => {
     makeStore(pi, stateTracker)
 
     emitSessionStart(pi)
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await settle()
 
     stateTracker.events.emit('running')
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await settle()
 
     let record = readState().sessions[String(process.pid)]
     expect(record?.state).toBe('running')
 
     stateTracker.events.emit('idle')
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await settle()
 
     record = readState().sessions[String(process.pid)]
     expect(record?.state).toBe('idle')
@@ -254,14 +283,14 @@ describe('SessionStore', () => {
     makeStore(pi, stateTracker)
 
     emitSessionStart(pi)
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await settle()
 
     stateTracker.events.emit('running')
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await settle()
 
     nowSpy.mockReturnValue(now + 5000)
     stateTracker.events.emit('idle')
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await settle()
 
     const record = readState().sessions[String(process.pid)]
     expect(record?.startedRunningAt).toBeUndefined()
@@ -275,12 +304,13 @@ describe('SessionStore', () => {
     })
     const store = new SessionStore(pi as unknown as ExtensionAPI, tracker)
     store.register(() => {})
+    activeStore = store
 
     emitSessionStart(pi)
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await settle()
 
     pi.emitEvent('permissions:ui_prompt', {})
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await settle()
 
     const record = readState().sessions[String(process.pid)]
     expect(record?.state).toBe('event:permissions:ui_prompt')
@@ -291,9 +321,10 @@ describe('SessionStore', () => {
     const tracker = makeRealTracker(pi, [])
     const store = new SessionStore(pi as unknown as ExtensionAPI, tracker)
     store.register(() => {})
+    activeStore = store
 
     emitSessionStart(pi)
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await settle()
 
     pi.emit('ui_prompt_start', {
       type: 'ui_prompt_start',
@@ -302,7 +333,7 @@ describe('SessionStore', () => {
       title: 'Pick one',
     })
 
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await settle()
 
     const record = readState().sessions[String(process.pid)]
     expect(record?.state).toBe('ui:confirm:Pick one')
@@ -313,9 +344,10 @@ describe('SessionStore', () => {
     const tracker = makeRealTracker(pi, [])
     const store = new SessionStore(pi as unknown as ExtensionAPI, tracker)
     store.register(() => {})
+    activeStore = store
 
     emitSessionStart(pi)
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await settle()
 
     pi.emit('ui_prompt_start', {
       type: 'ui_prompt_start',
@@ -323,7 +355,7 @@ describe('SessionStore', () => {
       kind: 'custom',
     })
 
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await settle()
 
     const record = readState().sessions[String(process.pid)]
     expect(record?.state).toBe('ui:custom:')
@@ -334,9 +366,10 @@ describe('SessionStore', () => {
     const tracker = makeRealTracker(pi, ['read'])
     const store = new SessionStore(pi as unknown as ExtensionAPI, tracker)
     store.register(() => {})
+    activeStore = store
 
     emitSessionStart(pi)
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await settle()
 
     expect(readState().sessions[String(process.pid)]?.state).toBe('idle')
 
@@ -345,7 +378,7 @@ describe('SessionStore', () => {
       toolCallId: 't1',
       toolName: 'grep',
     })
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await settle()
 
     const record = readState().sessions[String(process.pid)]
     expect(record?.state).toBe('idle')
@@ -358,7 +391,7 @@ describe('SessionStore', () => {
 
     stateTracker.events.emit('tool', 'grep')
     stateTracker.events.emit('event', 'permissions:ui_prompt')
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await settle()
 
     expect(readState().sessions).toEqual({})
   })
@@ -369,7 +402,7 @@ describe('SessionStore', () => {
     makeStore(pi, stateTracker)
 
     emitSessionStart(pi)
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await settle()
 
     const record = readState().sessions[String(process.pid)]
     expect(record).toBeDefined()
@@ -383,10 +416,10 @@ describe('SessionStore', () => {
     })
 
     stateTracker.events.emit('running')
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await settle()
 
     stateTracker.events.emit('idle')
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await settle()
 
     expect(readState().sessions[String(process.pid)]?.starred).toBe(true)
   })
@@ -425,7 +458,7 @@ describe('SessionStore unread', () => {
   }
 
   async function wait(): Promise<void> {
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await settle()
   }
 
   it('marks unread and keeps other fields', async () => {
