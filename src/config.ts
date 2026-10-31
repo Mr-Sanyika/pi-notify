@@ -26,23 +26,17 @@ const DEFAULT_NOTIFY_SYMBOL = '🔔'
 
 const SETTINGS_PATH = join(getAgentDir(), 'settings.json')
 
-type RawSettings = Record<string, unknown>
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 type ParsedConfigResult =
   | { readonly status: 'malformed' }
-  | {
-      readonly status: 'valid'
-      readonly settings: RawSettings
-      readonly piNotify: NotifyConfig
-    }
+  | { readonly status: 'valid'; readonly piNotify: NotifyConfig }
 
 function readRawConfig(): ParsedConfigResult {
   if (!existsSync(SETTINGS_PATH)) {
-    return { status: 'valid', settings: {}, piNotify: {} }
+    return { status: 'valid', piNotify: {} }
   }
   let content: string
   try {
@@ -61,11 +55,10 @@ export function parseConfig(content: string): ParsedConfigResult {
     return { status: 'malformed' }
   }
   if (!isRecord(parsed)) {
-    return { status: 'valid', settings: {}, piNotify: {} }
+    return { status: 'valid', piNotify: {} }
   }
   return {
     status: 'valid',
-    settings: parsed,
     piNotify: Value.Check(NotifyConfigSchema, parsed.piNotify)
       ? parsed.piNotify
       : {},

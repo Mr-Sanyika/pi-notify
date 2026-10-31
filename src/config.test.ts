@@ -24,7 +24,6 @@ describe('parseConfig', () => {
     for (const content of ['[1,2]', '42', 'null', '"str"']) {
       expect(parseConfig(content)).toEqual({
         status: 'valid',
-        settings: {},
         piNotify: {},
       })
     }
@@ -33,7 +32,6 @@ describe('parseConfig', () => {
   it('returns empty piNotify when record has no piNotify', () => {
     expect(parseConfig('{"foo": 1}')).toEqual({
       status: 'valid',
-      settings: { foo: 1 },
       piNotify: {},
     })
   })
@@ -50,7 +48,6 @@ describe('parseConfig', () => {
     })
     expect(parseConfig(content)).toEqual({
       status: 'valid',
-      settings: JSON.parse(content),
       piNotify: JSON.parse(content).piNotify,
     })
   })
@@ -58,7 +55,6 @@ describe('parseConfig', () => {
   it('falls back to empty piNotify when piNotify is not an object', () => {
     expect(parseConfig('{"piNotify": "x"}')).toEqual({
       status: 'valid',
-      settings: { piNotify: 'x' },
       piNotify: {},
     })
   })
@@ -72,7 +68,6 @@ describe('parseConfig', () => {
     })
     expect(parseConfig(content)).toEqual({
       status: 'valid',
-      settings: JSON.parse(content),
       piNotify: {},
     })
   })
