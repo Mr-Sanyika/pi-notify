@@ -4,11 +4,8 @@ import type {
 } from '@earendil-works/pi-coding-agent'
 
 import type { ResolvedNotifyConfig } from './config.js'
-import type { JobTracker } from './jobs.js'
 import { Registrar } from './shared/registrar.js'
 import type { NotifyAction } from './shared/types.js'
-
-export const PI_NOTIFY_EVENT = 'pi-notify:notify'
 
 const IDLE_TIMEOUT_MS = 10000
 
@@ -27,25 +24,18 @@ function promptMessage(kind: UIPromptKind, title?: string): string {
 }
 
 export class StateTracker extends Registrar {
-  private readonly jobTracker: JobTracker
   private readonly config: ResolvedNotifyConfig
   private idleTimer: NodeJS.Timeout | null = null
   private running = false
   private uiPromptDepth = 0
   private notify: NotifyAction = () => {}
 
-  constructor(
-    pi: ExtensionAPI,
-    jobTracker: JobTracker,
-    config: ResolvedNotifyConfig,
-  ) {
+  constructor(pi: ExtensionAPI, config: ResolvedNotifyConfig) {
     super(pi)
-    this.jobTracker = jobTracker
     this.config = config
   }
 
   private startIdleTimer(): void {
-    if (this.jobTracker.hasActiveJobs) return
     this.clearIdleTimer()
     this.idleTimer = setTimeout(() => {
       this.idleTimer = null
@@ -69,24 +59,6 @@ export class StateTracker extends Registrar {
     this.running = true
   }
 
-  private setupPiEvents() {
-    for (const [channel, message] of Object.entries(this.config.events)) {
-      if (typeof message !== 'string' || message === '') continue
-      const unsubscribe = this.pi.events.on(channel, () => {
-        this.notify(message)
-        this.running = false
-      })
-      this.unsubscribes.push(unsubscribe)
-    }
-
-    const customEventUnsub = this.pi.events.on(PI_NOTIFY_EVENT, (payload) => {
-      if (typeof payload !== 'string' || payload === '') return
-      this.notify(payload)
-      this.running = false
-    })
-    this.unsubscribes.push(customEventUnsub)
-  }
-
   private setupUiPrompt() {
     this.pi.on('ui_prompt_start', (event) => {
       this.clearIdleTimer()
@@ -98,19 +70,14 @@ export class StateTracker extends Registrar {
     this.pi.on('ui_prompt_end', () => {
       if (this.uiPromptDepth > 0) this.uiPromptDepth--
       if (this.uiPromptDepth > 0) return
-      // A prompt is transient: only a settled, job-free session goes idle.
-      if (!this.running && !this.jobTracker.hasActiveJobs) {
-        this.startIdleTimer()
-      }
+      // A prompt is transient: only a settled session goes idle.
+      if (!this.running) this.startIdleTimer()
     })
   }
 
   private setupToolCall() {
-    this.pi.on('tool_call', (event) => {
-      if (this.config.notifyTools.has(event.toolName)) {
-        this.notify(`Tool call: ${event.toolName}`)
-        this.running = false
-      }
+    // A tool call is activity: keep the session from going idle mid-run.
+    this.pi.on('tool_call', () => {
       this.clearIdleTimer()
     })
   }
@@ -118,7 +85,6 @@ export class StateTracker extends Registrar {
   protected override setup(notify: NotifyAction): void {
     this.notify = notify
 
-    this.setupPiEvents()
     this.setupUiPrompt()
     this.setupToolCall()
 
@@ -135,16 +101,6 @@ export class StateTracker extends Registrar {
     this.pi.on('agent_settled', () => {
       this.startIdleTimer()
     })
-
-    this.unsubscribes.push(
-      this.jobTracker.onStart(() => {
-        this.markRunning()
-        this.clearIdleTimer()
-      }),
-      this.jobTracker.onEnd(() => {
-        this.startIdleTimer()
-      }),
-    )
   }
 
   override stop(): void {

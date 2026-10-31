@@ -4,7 +4,6 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 
 import { loadConfig } from './config.js'
 import { FocusTracker } from './focus.js'
-import { JobTracker } from './jobs.js'
 import { notify } from './notifier.js'
 import { NotifyTest } from './notify-test.js'
 import type { Registerable } from './shared/types.js'
@@ -13,17 +12,13 @@ import { SessionState } from './states.js'
 import { TmuxTitleTracker } from './tmux-title.js'
 import { UnreadTracker } from './unread-tracker.js'
 
-export { JOB_END_EVENT, JOB_START_EVENT } from './jobs.js'
-export { PI_NOTIFY_EVENT } from './state-tracker.js'
-
 export default function piNotifyExtension(pi: ExtensionAPI): void {
   const config = loadConfig()
   const dirName = basename(process.cwd())
   const title = `pi — ${dirName}`
 
   const tmuxTitleTracker = new TmuxTitleTracker(pi, config)
-  const jobTracker = new JobTracker(pi)
-  const stateTracker = new StateTracker(pi, jobTracker, config)
+  const stateTracker = new StateTracker(pi, config)
   const unreadTracker = new UnreadTracker({ titleTracker: tmuxTitleTracker })
   const focusTracker = new FocusTracker(pi, unreadTracker)
   const notifyTest = new NotifyTest(pi, title, unreadTracker)
@@ -46,7 +41,6 @@ export default function piNotifyExtension(pi: ExtensionAPI): void {
   const registrables: Registerable[] = [
     tmuxTitleTracker,
     focusTracker,
-    jobTracker,
     stateTracker,
     notifyTest,
   ]
