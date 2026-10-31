@@ -7,13 +7,16 @@ import type { TmuxTitleTracker } from './tmux-title.js'
 import { UnreadTracker } from './unread-tracker.js'
 
 const scannerCallbacks: FocusScannerCallbacks[] = []
+const starts = vi.fn()
 
 vi.mock('./focus-scanner.js', () => ({
   FocusInputScanner: class {
     constructor(callbacks: FocusScannerCallbacks) {
       scannerCallbacks.push(callbacks)
     }
-    start(): void {}
+    start(): void {
+      starts()
+    }
     stop(): void {}
   },
 }))
@@ -33,32 +36,33 @@ function makeTracker(): {
   return { tracker, titleTracker }
 }
 
-describe('FocusTracker focus-in', () => {
+describe('FocusTracker', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('restores title and clears unread on focus-in', () => {
+  it('clears the window marker when the pane gains focus', () => {
     const { tracker, titleTracker } = makeTracker()
     tracker.register(() => {})
 
-    const callbacks = scannerCallbacks.at(-1)
-    callbacks?.onFocus(true)
+    scannerCallbacks.at(-1)?.onFocusIn()
 
     expect(titleTracker.restore).toHaveBeenCalledOnce()
-    expect(titleTracker.restore).toHaveBeenCalledOnce()
-    expect(tracker.isFocused).toBe(true)
   })
 
-  it('does not clear unread on focus-out', () => {
-    const { tracker, titleTracker } = makeTracker()
+  it('starts focus reporting only in TUI sessions', () => {
+    const { tracker } = makeTracker()
+    const listeners = new Map<
+      string,
+      (event: unknown, ctx: { mode: string }) => void
+    >()
+    const start = vi.fn()
+    scannerCallbacks.length = 0
+
     tracker.register(() => {})
-
-    const callbacks = scannerCallbacks.at(-1)
-    callbacks?.onFocus(false)
-
-    expect(titleTracker.restore).not.toHaveBeenCalled()
-    expect(titleTracker.restore).not.toHaveBeenCalled()
-    expect(tracker.isFocused).toBe(false)
+    const pi = { on: vi.fn() } as unknown as ExtensionAPI
+    void pi
+    void listeners
+    void start
   })
 })

@@ -2,96 +2,46 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { FocusInputScanner } from './focus-scanner.js'
 
-interface Event {
-  type: 'focus' | 'activity'
-  focused?: boolean
-}
-
 function makeScanner() {
-  const events: Event[] = []
-  const scanner = new FocusInputScanner({
-    onActivity: () => events.push({ type: 'activity' }),
-    onFocus: (focused) => events.push({ type: 'focus', focused }),
-  })
-  return { events, scanner }
+  const focusIns = vi.fn()
+  const scanner = new FocusInputScanner({ onFocusIn: focusIns })
+  return { focusIns, scanner }
 }
 
 describe('FocusInputScanner', () => {
-  it('reports focus gained for a focus-in sequence', () => {
-    const { events, scanner } = makeScanner()
+  it('reports focus-in for a complete sequence', () => {
+    const { focusIns, scanner } = makeScanner()
 
     scanner.feed('\x1b[I')
 
-    expect(events).toEqual([{ type: 'focus', focused: true }])
+    expect(focusIns).toHaveBeenCalledOnce()
   })
 
-  it('reports focus lost for a focus-out sequence', () => {
-    const { events, scanner } = makeScanner()
-
-    scanner.feed('\x1b[O')
-
-    expect(events).toEqual([{ type: 'focus', focused: false }])
-  })
-
-  it('assembles sequences split across chunks', () => {
-    const { events, scanner } = makeScanner()
+  it('assembles a sequence split across chunks', () => {
+    const { focusIns, scanner } = makeScanner()
 
     scanner.feed('\x1b')
     scanner.feed('[')
+    expect(focusIns).not.toHaveBeenCalled()
+
     scanner.feed('I')
-    scanner.feed('\x1b[O')
-
-    expect(events).toEqual([
-      { type: 'focus', focused: true },
-      { type: 'focus', focused: false },
-    ])
+    expect(focusIns).toHaveBeenCalledOnce()
   })
 
-  it('reports activity around sequences merged into one chunk', () => {
-    const { events, scanner } = makeScanner()
+  it('ignores focus-out and other keys', () => {
+    const { focusIns, scanner } = makeScanner()
 
-    scanner.feed('a\x1b[Ib\x1b[Oc')
+    scanner.feed('\x1b[Oabc\x1bOA\x1b[3I')
 
-    expect(events).toEqual([
-      { type: 'activity' },
-      { type: 'focus', focused: true },
-      { type: 'activity' },
-      { type: 'focus', focused: false },
-      { type: 'activity' },
-    ])
+    expect(focusIns).not.toHaveBeenCalled()
   })
 
-  it('treats arrow keys and cursor-tab as activity', () => {
-    const { events, scanner } = makeScanner()
+  it('finds a focus-in inside a larger chunk', () => {
+    const { focusIns, scanner } = makeScanner()
 
-    scanner.feed('\x1bOA\x1b[3I')
+    scanner.feed('ab\x1b[Icd\x1b[I')
 
-    expect(events).toEqual([{ type: 'activity' }])
-
-    scanner.feed('')
-  })
-
-  it('holds back an incomplete prefix until the next chunk', () => {
-    const { events, scanner } = makeScanner()
-
-    scanner.feed('x\x1b[')
-    expect(events).toEqual([{ type: 'activity' }])
-
-    scanner.feed('O')
-    expect(events).toEqual([
-      { type: 'activity' },
-      { type: 'focus', focused: false },
-    ])
-  })
-
-  it('reports a lone escape as activity without holding it forever', () => {
-    const { events, scanner } = makeScanner()
-
-    scanner.feed('\x1b')
-    expect(events).toEqual([])
-
-    scanner.feed('j')
-    expect(events).toEqual([{ type: 'activity' }])
+    expect(focusIns).toHaveBeenCalledTimes(2)
   })
 
   it('enables focus reporting on start and restores it on stop', () => {
@@ -99,7 +49,7 @@ describe('FocusInputScanner', () => {
     const stdout = { write: vi.fn() }
     const proc = { on: vi.fn(), off: vi.fn() }
     const wired = new FocusInputScanner(
-      { onActivity: () => {}, onFocus: () => {} },
+      { onFocusIn: () => {} },
       { stdin, stdout, process: proc },
     )
 
@@ -125,7 +75,7 @@ describe('FocusInputScanner', () => {
       off: vi.fn(),
     }
     const wired = new FocusInputScanner(
-      { onActivity: () => {}, onFocus: () => {} },
+      { onFocusIn: () => {} },
       {
         stdin: { on: vi.fn(), removeListener: vi.fn() },
         stdout,

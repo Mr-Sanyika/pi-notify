@@ -1,12 +1,11 @@
 const ESC = '\x1b'
 const FOCUS_IN = `${ESC}[I`
-const FOCUS_OUT = `${ESC}[O`
 const ENABLE_FOCUS_REPORTING = '\x1b[?1004h'
 const DISABLE_FOCUS_REPORTING = '\x1b[?1004l'
 
 export interface FocusScannerCallbacks {
-  onFocus: (focused: boolean) => void
-  onActivity: () => void
+  /** The terminal reports that this pane/window gained focus. */
+  onFocusIn: () => void
 }
 
 export interface TerminalInputStream {
@@ -31,13 +30,12 @@ export interface FocusScannerProcess {
 }
 
 /**
- * Watches stdin for terminal focus reporting (DECSET 1004).
+ * Watches stdin for terminal focus reports (DECSET 1004).
  *
- * Terminals answer focus changes with `ESC[I` / `ESC[O`. A chunk boundary can
- * split those three bytes anywhere, so up to two trailing bytes are held back
- * until the next chunk; everything else is reported as activity. Only the
- * `ESC[I`/`ESC[O` shape is recognised — parameterised variants such as
- * `ESC[3I` (cursor forward tab) stay activity, which is what they are.
+ * Terminals answer a focus change with `ESC[I` / `ESC[O`; only focus-in is
+ * needed — it clears the tmux window marker. A chunk boundary can split those
+ * bytes anywhere, so up to two trailing bytes are held back until the next
+ * chunk. Nothing is ever re-emitted or swallowed: the stream is only inspected.
  */
 export class FocusInputScanner {
   private readonly callbacks: FocusScannerCallbacks
@@ -87,46 +85,31 @@ export class FocusInputScanner {
   feed(chunk: string): void {
     const data = this.pending + chunk
     this.pending = ''
-    let activity = false
     let index = 0
 
     while (index < data.length) {
       if (data.startsWith(FOCUS_IN, index)) {
-        this.flushActivity(activity)
-        activity = false
-        this.callbacks.onFocus(true)
+        this.callbacks.onFocusIn()
         index += FOCUS_IN.length
-      } else if (data.startsWith(FOCUS_OUT, index)) {
-        this.flushActivity(activity)
-        activity = false
-        this.callbacks.onFocus(false)
-        index += FOCUS_OUT.length
-      } else if (index >= data.length - 2 && isFocusPrefix(data.slice(index))) {
-        // Might be the start of a focus sequence split across chunks.
+      } else if (
+        index >= data.length - 2 &&
+        FOCUS_IN.startsWith(data.slice(index))
+      ) {
+        // Might be the start of a focus report split across chunks.
         break
       } else {
-        activity = true
         index++
       }
     }
 
     this.pending = data.slice(index)
-    this.flushActivity(activity)
   }
 
   clear(): void {
     this.pending = ''
   }
 
-  private flushActivity(activity: boolean): void {
-    if (activity) this.callbacks.onActivity()
-  }
-
   private writeDisable(): void {
     this.stdout.write(DISABLE_FOCUS_REPORTING)
   }
-}
-
-function isFocusPrefix(candidate: string): boolean {
-  return FOCUS_IN.startsWith(candidate) || FOCUS_OUT.startsWith(candidate)
 }
