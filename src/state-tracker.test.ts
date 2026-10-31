@@ -103,11 +103,9 @@ function makeTracker(
   config: ResolvedNotifyConfig = BASE_CONFIG,
 ): {
   tracker: StateTracker
-  states: string[]
   bodies: string[]
   jobs: FakeJobTracker
 } {
-  const states: string[] = []
   const bodies: string[] = []
   const jobs = makeFakeJobTracker()
   const tracker = new StateTracker(
@@ -116,13 +114,7 @@ function makeTracker(
     config,
   )
   tracker.register((body) => bodies.push(body))
-  tracker.events.on('running', () => {
-    states.push('running')
-  })
-  tracker.events.on('idle', () => {
-    states.push('idle')
-  })
-  return { tracker, states, bodies, jobs }
+  return { tracker, bodies, jobs }
 }
 
 describe('StateTracker', () => {
@@ -132,166 +124,6 @@ describe('StateTracker', () => {
 
   afterEach(() => {
     vi.useRealTimers()
-  })
-
-  it('emits running on turn_start', async () => {
-    const pi = makeFakePi()
-    const { states } = makeTracker(pi)
-
-    pi.emit('turn_start')
-
-    await flush()
-
-    expect(states).toEqual(['running'])
-  })
-
-  it('does not turn listener failures into unhandled rejections', async () => {
-    const pi = makeFakePi()
-    const { tracker } = makeTracker(pi)
-    tracker.events.on('running', () => {
-      throw new Error('listener boom')
-    })
-
-    const rejections: unknown[] = []
-    const onRejection = (reason: unknown): void => {
-      rejections.push(reason)
-    }
-    process.on('unhandledRejection', onRejection)
-    try {
-      pi.emit('turn_start')
-      await flush()
-      await flush()
-    } finally {
-      process.off('unhandledRejection', onRejection)
-    }
-
-    expect(rejections).toEqual([])
-  })
-
-  it('emits idle after the idle timeout following agent_settled', async () => {
-    const pi = makeFakePi()
-    const { states } = makeTracker(pi)
-
-    pi.emit('turn_start')
-    pi.emit('agent_settled')
-    vi.advanceTimersByTime(10000)
-
-    await flush()
-
-    expect(states).toEqual(['running', 'idle'])
-  })
-
-  it('does not emit running repeatedly while already running', async () => {
-    const pi = makeFakePi()
-    const { states } = makeTracker(pi)
-
-    pi.emit('turn_start')
-    pi.emit('message_start')
-    pi.emit('turn_start')
-
-    await flush()
-
-    expect(states).toEqual(['running'])
-  })
-
-  it('re-emits running after a notified custom event resets the state', async () => {
-    const pi = makeFakePi()
-    const { states } = makeTracker(pi)
-
-    pi.emit('turn_start')
-    pi.emitEvent('my:custom:event', {})
-    pi.emit('turn_start')
-
-    await flush()
-
-    expect(states).toEqual(['running', 'running'])
-  })
-
-  it('re-emits running after a notified tool call resets the state', async () => {
-    const pi = makeFakePi()
-    const { states } = makeTracker(pi)
-
-    pi.emit('turn_start')
-    pi.emit('tool_call', {
-      type: 'tool_call',
-      toolCallId: 't1',
-      toolName: 'bash',
-    })
-    pi.emit('turn_start')
-
-    await flush()
-
-    expect(states).toEqual(['running', 'running'])
-  })
-
-  it('emits tool only for tools in notifyTools', async () => {
-    const pi = makeFakePi()
-    const { tracker } = makeTracker(pi)
-    const tools: string[] = []
-    tracker.events.on('tool', (event) => {
-      tools.push(event.data)
-    })
-
-    pi.emit('tool_call', {
-      type: 'tool_call',
-      toolCallId: 't1',
-      toolName: 'bash',
-    })
-    pi.emit('tool_call', {
-      type: 'tool_call',
-      toolCallId: 't2',
-      toolName: 'grep',
-    })
-
-    await flush()
-
-    expect(tools).toEqual(['bash'])
-  })
-
-  it('emits event for configured channels and not for disabled ones', async () => {
-    const pi = makeFakePi()
-    const { tracker } = makeTracker(pi)
-    const events: string[] = []
-    tracker.events.on('event', (event) => {
-      events.push(event.data)
-    })
-
-    pi.emitEvent('my:custom:event', {})
-    pi.emitEvent('disabled:channel', {})
-
-    await flush()
-
-    expect(events).toEqual(['my:custom:event'])
-  })
-
-  it('unsubscribes from channel events on stop', async () => {
-    const pi = makeFakePi()
-    const { tracker } = makeTracker(pi)
-    const events: string[] = []
-    tracker.events.on('event', (event) => {
-      events.push(event.data)
-    })
-
-    tracker.stop()
-    pi.emitEvent('my:custom:event', {})
-
-    await flush()
-
-    expect(events).toEqual([])
-  })
-
-  it('emits running again after becoming idle', async () => {
-    const pi = makeFakePi()
-    const { states } = makeTracker(pi)
-
-    pi.emit('turn_start')
-    pi.emit('agent_settled')
-    vi.advanceTimersByTime(10000)
-    pi.emit('turn_start')
-
-    await flush()
-
-    expect(states).toEqual(['running', 'idle', 'running'])
   })
 
   it('notifies with the configured message when a custom event fires', () => {
@@ -360,54 +192,9 @@ describe('StateTracker', () => {
     expect(bodies).toEqual(['Waiting: Select'])
   })
 
-  it('emits ui_prompt with the raw kind and resets running', async () => {
+  it('does not notify Idle while a ui prompt is open', async () => {
     const pi = makeFakePi()
-    const { tracker, states } = makeTracker(pi)
-    const kinds: string[] = []
-    tracker.events.on('ui_prompt', (event) => {
-      kinds.push(event.data)
-    })
-
-    pi.emit('turn_start')
-    pi.emit('ui_prompt_start', {
-      type: 'ui_prompt_start',
-      reason: 'ui_prompt',
-      kind: 'confirm',
-      title: 'Apply changes?',
-    })
-    pi.emit('turn_start')
-
-    await flush()
-
-    expect(kinds).toEqual(['confirm:Apply changes?'])
-    expect(states).toEqual(['running', 'running'])
-  })
-
-  it('emits ui_prompt without a title', async () => {
-    const pi = makeFakePi()
-    const { tracker, states } = makeTracker(pi)
-    const kinds: string[] = []
-    tracker.events.on('ui_prompt', (event) => {
-      kinds.push(event.data)
-    })
-
-    pi.emit('turn_start')
-    pi.emit('ui_prompt_start', {
-      type: 'ui_prompt_start',
-      reason: 'ui_prompt',
-      kind: 'select',
-    })
-    pi.emit('turn_start')
-
-    await flush()
-
-    expect(kinds).toEqual(['select:'])
-    expect(states).toEqual(['running', 'running'])
-  })
-
-  it('does not emit idle while a ui prompt is open', async () => {
-    const pi = makeFakePi()
-    const { states } = makeTracker(pi)
+    const { bodies } = makeTracker(pi)
 
     pi.emit('turn_start')
     pi.emit('agent_settled')
@@ -420,19 +207,20 @@ describe('StateTracker', () => {
 
     await flush()
 
-    expect(states).toEqual(['running'])
+    expect(bodies).toEqual(['Waiting: Prompt'])
 
     pi.emit('ui_prompt_end')
     vi.advanceTimersByTime(10000)
 
     await flush()
 
-    expect(states).toEqual(['running', 'idle'])
+    // Opening the prompt already reset `running`, so no "Idle" follows.
+    expect(bodies).toEqual(['Waiting: Prompt'])
   })
 
-  it('reverts to running after the prompt closes while jobs are active', async () => {
+  it('stays quiet after the prompt closes while jobs are active', async () => {
     const pi = makeFakePi()
-    const { states, jobs } = makeTracker(pi)
+    const { bodies, jobs } = makeTracker(pi)
 
     jobs.hasActiveJobs = true
     jobs.startListener?.()
@@ -442,15 +230,16 @@ describe('StateTracker', () => {
       kind: 'custom',
     })
     pi.emit('ui_prompt_end')
+    vi.advanceTimersByTime(10000)
 
     await flush()
 
-    expect(states).toEqual(['running', 'running'])
+    expect(bodies).toEqual(['Waiting: Prompt'])
   })
 
-  it('only reverts the state after the last nested prompt closes', async () => {
+  it('only notifies Idle after the last nested prompt closes', async () => {
     const pi = makeFakePi()
-    const { states } = makeTracker(pi)
+    const { bodies } = makeTracker(pi)
 
     pi.emit('turn_start')
     pi.emit('ui_prompt_start', {
@@ -469,14 +258,14 @@ describe('StateTracker', () => {
 
     await flush()
 
-    expect(states).toEqual(['running'])
+    expect(bodies).toEqual(['Waiting: Prompt', 'Waiting: Select — Pick one'])
 
     pi.emit('ui_prompt_end')
     vi.advanceTimersByTime(10000)
 
     await flush()
 
-    expect(states).toEqual(['running', 'idle'])
+    expect(bodies).toEqual(['Waiting: Prompt', 'Waiting: Select — Pick one'])
   })
 
   it('notifies for tools in notifyTools', () => {
@@ -577,7 +366,7 @@ describe('StateTracker', () => {
 
   it('resets the idle timer on activity', async () => {
     const pi = makeFakePi()
-    const { states } = makeTracker(pi)
+    const { bodies } = makeTracker(pi)
 
     pi.emit('turn_start')
     pi.emit('agent_settled')
@@ -591,13 +380,14 @@ describe('StateTracker', () => {
 
     await flush()
 
-    expect(states).toEqual(['running'])
+    // The notifying tool call cleared the pending timer and reset `running`.
+    expect(bodies).toEqual(['Tool call: bash'])
 
     pi.emit('agent_settled')
     vi.advanceTimersByTime(10000)
 
     await flush()
 
-    expect(states).toEqual(['running', 'idle'])
+    expect(bodies).toEqual(['Tool call: bash'])
   })
 })

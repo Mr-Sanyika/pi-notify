@@ -18,7 +18,7 @@ The extension runs inside pi's own runtime (a Bun single-file binary), not plain
 > The `/notify-dashboard` session browser is not part of this line. That drops the
 > shared session registry, the tmux jump keybinding, `tsx`/`esbuild`, `lodash-es` and
 > `proper-lockfile`: nothing is written to disk, nothing is added to your tmux key
-> table, and there are two runtime dependencies. Notification delivery, the tmux
+> table, and the extension has no runtime dependencies at all. Notification delivery, the tmux
 > window marker and the idle/tool/UI-prompt triggers are unchanged.
 
 ## Installation
