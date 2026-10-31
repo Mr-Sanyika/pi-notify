@@ -10,8 +10,6 @@ vi.mock('node:fs', () => ({
 const ALL_DEFAULTS = {
   enabled: true,
   finished: true,
-  onlyNotifyWhenUnfocused: true,
-  unfocusedActivityThresholdMs: 30000,
   idleDelayMs: 10000,
   notifySymbol: '🔔',
 }
@@ -51,8 +49,6 @@ describe('parseConfig', () => {
       piNotify: {
         enabled: false,
         finished: false,
-        onlyNotifyWhenUnfocused: false,
-        unfocusedActivityThresholdSecs: 5,
         idleDelaySecs: 45,
         notifySymbol: '!',
       },
@@ -74,7 +70,7 @@ describe('parseConfig', () => {
     const content = JSON.stringify({
       piNotify: {
         enabled: 'yes',
-        unfocusedActivityThresholdSecs: 'x',
+        idleDelaySecs: 'x',
       },
     })
     expect(parseConfig(content)).toEqual({

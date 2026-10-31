@@ -26,14 +26,6 @@ export default function piNotifyExtension(pi: ExtensionAPI): void {
 
   function notifyReal(body: string): void {
     if (!config.enabled || !sessionState.hasUI) return
-    if (config.onlyNotifyWhenUnfocused) {
-      // Prefer the real focus state; fall back to inactivity timing for
-      // terminals that lack focus reporting.
-      const recentlyActive =
-        Date.now() - focusTracker.lastActivityAt <=
-        config.unfocusedActivityThresholdMs
-      if (focusTracker.isFocused ?? recentlyActive) return
-    }
     unreadTracker.markUnread()
     notify(title, body)
   }

@@ -8,8 +8,6 @@ import { Value } from 'typebox/value'
 const NotifyConfigSchema = Type.Object({
   enabled: Type.Optional(Type.Boolean()),
   finished: Type.Optional(Type.Boolean()),
-  onlyNotifyWhenUnfocused: Type.Optional(Type.Boolean()),
-  unfocusedActivityThresholdSecs: Type.Optional(Type.Number()),
   idleDelaySecs: Type.Optional(Type.Number()),
   notifySymbol: Type.Optional(Type.String()),
 })
@@ -18,8 +16,6 @@ type NotifyConfig = Static<typeof NotifyConfigSchema>
 export interface ResolvedNotifyConfig {
   readonly enabled: boolean
   readonly finished: boolean
-  readonly onlyNotifyWhenUnfocused: boolean
-  readonly unfocusedActivityThresholdMs: number
   readonly idleDelayMs: number
   readonly notifySymbol: string
 }
@@ -83,11 +79,6 @@ export function loadConfig(): ResolvedNotifyConfig {
   return {
     enabled: cfg.enabled ?? true,
     finished: cfg.finished ?? true,
-    onlyNotifyWhenUnfocused: cfg.onlyNotifyWhenUnfocused ?? true,
-    unfocusedActivityThresholdMs: Math.max(
-      0,
-      (cfg.unfocusedActivityThresholdSecs ?? 30) * 1000,
-    ),
     idleDelayMs: clampIdleDelayMs(cfg.idleDelaySecs),
     notifySymbol: cfg.notifySymbol ?? DEFAULT_NOTIFY_SYMBOL,
   }

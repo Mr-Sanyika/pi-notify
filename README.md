@@ -3,14 +3,16 @@
 A Linux notification extension for the [pi](https://github.com/earendil-works/pi-coding-agent)
 coding agent. Forked from [`@raidou/pi-notify`](https://github.com/weirongxu/pi-notify).
 
-It fires a desktop notification in two situations:
+Notifications are always delivered — no "only when you are away" gating, no terminal
+heuristics. It fires in two situations:
 
 - the agent has finished and the session is quiet for a few seconds (`Idle`)
 - pi is blocked on you: a permission approval, a `select`/`confirm`/`input` dialog
   (`Waiting: Select — Apply changes?`)
 
-Nothing else. No dashboard, no session registry, no state file, no tmux keybindings,
-no terminal escape sequences, no runtime dependencies.
+Nothing else. No dashboard, no session registry, no state file, no tmux keybindings and no
+runtime dependencies; the only terminal sequence it writes is the focus-reporting toggle that
+clears the window marker.
 
 ## Requirements
 
@@ -49,8 +51,6 @@ A malformed `settings.json` falls back to the defaults instead of breaking the a
   "piNotify": {
     "enabled": true, // master on/off switch (default: true)
     "finished": true, // send "Idle" when a run finishes (default: true)
-    "onlyNotifyWhenUnfocused": true, // suppress notifications while you are looking (default: true)
-    "unfocusedActivityThresholdSecs": 30, // inactivity fallback when the terminal reports no focus (default: 30)
     "idleDelaySecs": 10, // quiet time after a run before "Idle" fires, 0-3600 (default: 10)
     "notifySymbol": "🔔", // tmux window marker, empty string disables it (default: "🔔")
   },
@@ -69,15 +69,13 @@ activity stays quiet, and `finished: false` disables it entirely.
 
 ## Focus handling
 
-To avoid toasting you while you are already looking at the pane, the extension enables
-terminal focus reporting (`DECSET 1004`) for the duration of a TUI session and reads the
-`ESC[I` / `ESC[O` reports terminals send. It is turned off again on `session_shutdown` and
-from a `process.on('exit')` hook.
+Focus reporting (`DECSET 1004`) is used for one thing: clearing the 🔔 window marker when you
+come back to the pane. It never suppresses a notification. The mode is enabled for the
+duration of a TUI session and turned off again on `session_shutdown` and from a
+`process.on('exit')` hook.
 
-Known limits: `kill -9` cannot be intercepted, so the terminal keeps sending focus reports
-until it is reset (some shells then echo stray `^[[I` / `^[[O`); and a fullscreen switch can
-disable focus reporting for the rest of the session. In both cases the extension falls back
-to `unfocusedActivityThresholdSecs` of inactivity.
+Known limit: `kill -9` cannot be intercepted, so the terminal keeps sending focus reports
+until it is reset (some shells then echo stray `^[[I` / `^[[O`).
 
 ## tmux window marker
 

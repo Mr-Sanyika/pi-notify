@@ -62,8 +62,6 @@ async function flush(): Promise<void> {
 const BASE_CONFIG: ResolvedNotifyConfig = {
   enabled: true,
   finished: true,
-  onlyNotifyWhenUnfocused: true,
-  unfocusedActivityThresholdMs: 0,
   idleDelayMs: 10000,
   notifySymbol: '',
 }
