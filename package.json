@@ -8,8 +8,7 @@
     "pi-extension",
     "pi-coding-agent",
     "notifications",
-    "desktop",
-    "wsl"
+    "desktop"
   ],
   "license": "MIT",
   "repository": {
