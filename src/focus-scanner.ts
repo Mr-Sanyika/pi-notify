@@ -1,12 +1,8 @@
 const ESC = '\x1b'
 const FOCUS_IN = `${ESC}[I`
 const FOCUS_OUT = `${ESC}[O`
-const PENDING_LIMIT = 32
 const ENABLE_FOCUS_REPORTING = '\x1b[?1004h'
 const DISABLE_FOCUS_REPORTING = '\x1b[?1004l'
-
-// Aligned with pi-tui's escape timeout so bare ESC keys feel responsive.
-export const DEFAULT_SEQUENCE_TIMEOUT_MS = 50
 
 export interface FocusScannerCallbacks {
   onFocus: (focused: boolean) => void
@@ -22,15 +18,9 @@ export interface TerminalOutputStream {
   write(chunk: string): unknown
 }
 
-interface FocusScannerTimers {
-  setTimeout: (handler: () => void, ms: number) => NodeJS.Timeout
-  clearTimeout: (handle: NodeJS.Timeout) => void
-}
-
 export interface FocusScannerDeps {
   stdin?: TerminalInputStream
   stdout?: TerminalOutputStream
-  timers?: FocusScannerTimers
   /** Process-level hooks; overridable so tests do not touch the real process. */
   process?: FocusScannerProcess
 }
@@ -40,24 +30,21 @@ export interface FocusScannerProcess {
   off(event: 'exit', listener: () => void): unknown
 }
 
-const defaultTimers: FocusScannerTimers = {
-  setTimeout: (handler, ms) => setTimeout(handler, ms),
-  clearTimeout,
-}
-
-function isFinalByte(byte: string): boolean {
-  const code = byte.charCodeAt(0)
-  return code >= 0x40 && code <= 0x7e
-}
-
+/**
+ * Watches stdin for terminal focus reporting (DECSET 1004).
+ *
+ * Terminals answer focus changes with `ESC[I` / `ESC[O`. A chunk boundary can
+ * split those three bytes anywhere, so up to two trailing bytes are held back
+ * until the next chunk; everything else is reported as activity. Only the
+ * `ESC[I`/`ESC[O` shape is recognised — parameterised variants such as
+ * `ESC[3I` (cursor forward tab) stay activity, which is what they are.
+ */
 export class FocusInputScanner {
   private readonly callbacks: FocusScannerCallbacks
   private readonly stdin: TerminalInputStream
   private readonly stdout: TerminalOutputStream
-  private readonly timers: FocusScannerTimers
   private readonly proc: FocusScannerProcess
   private pending = ''
-  private timeoutHandle: NodeJS.Timeout | undefined
   private listening = false
   private readonly stdinDataHandler = (chunk: string) => {
     this.feed(chunk)
@@ -71,12 +58,11 @@ export class FocusInputScanner {
 
   constructor(
     callbacks: FocusScannerCallbacks,
-    { stdin, stdout, timers, process: proc }: FocusScannerDeps = {},
+    { stdin, stdout, process: proc }: FocusScannerDeps = {},
   ) {
     this.callbacks = callbacks
     this.stdin = stdin ?? process.stdin
     this.stdout = stdout ?? process.stdout
-    this.timers = timers ?? defaultTimers
     this.proc = proc ?? process
   }
 
@@ -98,91 +84,49 @@ export class FocusInputScanner {
     this.clear()
   }
 
-  private writeDisable(): void {
-    this.stdout.write(DISABLE_FOCUS_REPORTING)
-  }
-
   feed(chunk: string): void {
-    for (const byte of chunk) {
-      this.feedByte(byte)
+    const data = this.pending + chunk
+    this.pending = ''
+    let activity = false
+    let index = 0
+
+    while (index < data.length) {
+      if (data.startsWith(FOCUS_IN, index)) {
+        this.flushActivity(activity)
+        activity = false
+        this.callbacks.onFocus(true)
+        index += FOCUS_IN.length
+      } else if (data.startsWith(FOCUS_OUT, index)) {
+        this.flushActivity(activity)
+        activity = false
+        this.callbacks.onFocus(false)
+        index += FOCUS_OUT.length
+      } else if (index >= data.length - 2 && isFocusPrefix(data.slice(index))) {
+        // Might be the start of a focus sequence split across chunks.
+        break
+      } else {
+        activity = true
+        index++
+      }
     }
+
+    this.pending = data.slice(index)
+    this.flushActivity(activity)
   }
 
   clear(): void {
-    this.cancelTimeout()
     this.pending = ''
   }
 
-  private feedByte(byte: string): void {
-    if (this.pending === '') {
-      if (byte !== ESC) {
-        this.callbacks.onActivity()
-        return
-      }
-      this.pending = byte
-      this.armTimeout()
-      return
-    }
-    this.pending += byte
-    if (this.completeEscape(this.pending)) {
-      const pending = this.pending
-      this.resolvePending()
-      switch (pending) {
-        case FOCUS_IN:
-          this.callbacks.onFocus(true)
-          break
-        case FOCUS_OUT:
-          this.callbacks.onFocus(false)
-          break
-        default:
-          this.callbacks.onActivity()
-      }
-      return
-    }
-    if (this.pending.length > PENDING_LIMIT) {
-      this.resolvePending()
-      this.callbacks.onActivity()
-    }
+  private flushActivity(activity: boolean): void {
+    if (activity) this.callbacks.onActivity()
   }
 
-  private onTimeout(): void {
-    this.timeoutHandle = undefined
-    if (this.pending === '') return
-    // Incomplete sequence (bare ESC, "\x1b[", "\x1bO", "\x1b[1;5", ...):
-    // treat as key activity and drop.
-    this.resolvePending()
-    this.callbacks.onActivity()
+  private writeDisable(): void {
+    this.stdout.write(DISABLE_FOCUS_REPORTING)
   }
+}
 
-  private completeEscape(pending: string): boolean {
-    if (pending.startsWith(`${ESC}[`)) {
-      // CSI needs the introducer plus at least one final byte (0x40-0x7e).
-      return (
-        pending.length >= 3 && isFinalByte(pending.charAt(pending.length - 1))
-      )
-    }
-    if (pending.charAt(1) === 'O') {
-      // SS3 needs "\x1bO" plus a final byte.
-      return pending.length === 3 && isFinalByte(pending.charAt(2))
-    }
-    // Alt-style "ESC + byte".
-    return pending.length === 2
-  }
-
-  private armTimeout(): void {
-    this.timeoutHandle = this.timers.setTimeout(() => {
-      this.onTimeout()
-    }, DEFAULT_SEQUENCE_TIMEOUT_MS)
-  }
-
-  private cancelTimeout(): void {
-    if (this.timeoutHandle === undefined) return
-    this.timers.clearTimeout(this.timeoutHandle)
-    this.timeoutHandle = undefined
-  }
-
-  private resolvePending(): void {
-    this.cancelTimeout()
-    this.pending = ''
-  }
+function isFocusPrefix(candidate: string): boolean {
+  return FOCUS_IN.startsWith(candidate) || FOCUS_OUT.startsWith(candidate)
 }

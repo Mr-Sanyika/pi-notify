@@ -1,177 +1,142 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import type { FocusScannerDeps } from './focus-scanner.js'
-import {
-  DEFAULT_SEQUENCE_TIMEOUT_MS,
-  FocusInputScanner,
-} from './focus-scanner.js'
+import { FocusInputScanner } from './focus-scanner.js'
 
 interface Event {
   type: 'focus' | 'activity'
   focused?: boolean
 }
 
-function makeScanner(deps: FocusScannerDeps = {}) {
+function makeScanner() {
   const events: Event[] = []
-  const scanner = new FocusInputScanner(
-    {
-      onActivity: () => events.push({ type: 'activity' }),
-      onFocus: (focused) => events.push({ type: 'focus', focused }),
-    },
-    deps,
-  )
+  const scanner = new FocusInputScanner({
+    onActivity: () => events.push({ type: 'activity' }),
+    onFocus: (focused) => events.push({ type: 'focus', focused }),
+  })
   return { events, scanner }
 }
 
 describe('FocusInputScanner', () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  it('reports focus gained for a complete focus-in sequence', () => {
+  it('reports focus gained for a focus-in sequence', () => {
     const { events, scanner } = makeScanner()
+
     scanner.feed('\x1b[I')
+
     expect(events).toEqual([{ type: 'focus', focused: true }])
   })
 
-  it('reports focus lost for a complete focus-out sequence', () => {
+  it('reports focus lost for a focus-out sequence', () => {
     const { events, scanner } = makeScanner()
+
     scanner.feed('\x1b[O')
+
     expect(events).toEqual([{ type: 'focus', focused: false }])
   })
 
   it('assembles sequences split across chunks', () => {
     const { events, scanner } = makeScanner()
+
     scanner.feed('\x1b')
-    expect(events).toEqual([])
-    scanner.feed('[I')
-    expect(events).toEqual([{ type: 'focus', focused: true }])
+    scanner.feed('[')
+    scanner.feed('I')
+    scanner.feed('\x1b[O')
+
+    expect(events).toEqual([
+      { type: 'focus', focused: true },
+      { type: 'focus', focused: false },
+    ])
   })
 
   it('reports activity around sequences merged into one chunk', () => {
     const { events, scanner } = makeScanner()
-    scanner.feed('abc\x1b[Odef')
+
+    scanner.feed('a\x1b[Ib\x1b[Oc')
+
     expect(events).toEqual([
       { type: 'activity' },
-      { type: 'activity' },
+      { type: 'focus', focused: true },
       { type: 'activity' },
       { type: 'focus', focused: false },
       { type: 'activity' },
-      { type: 'activity' },
-      { type: 'activity' },
     ])
   })
 
-  it('treats SS3 arrow keys as activity', () => {
+  it('treats arrow keys and cursor-tab as activity', () => {
     const { events, scanner } = makeScanner()
-    scanner.feed('\x1bOA')
+
+    scanner.feed('\x1bOA\x1b[3I')
+
     expect(events).toEqual([{ type: 'activity' }])
+
+    scanner.feed('')
   })
 
-  it('treats a bare SS3 introducer as activity after timeout', () => {
+  it('holds back an incomplete prefix until the next chunk', () => {
     const { events, scanner } = makeScanner()
-    scanner.feed('\x1bO')
-    vi.advanceTimersByTime(DEFAULT_SEQUENCE_TIMEOUT_MS)
+
+    scanner.feed('x\x1b[')
     expect(events).toEqual([{ type: 'activity' }])
-  })
 
-  it('reports activity when a pending sequence times out', () => {
-    const { events, scanner } = makeScanner()
-    scanner.feed('\x1b[')
-    vi.advanceTimersByTime(DEFAULT_SEQUENCE_TIMEOUT_MS)
-    expect(events).toEqual([{ type: 'activity' }])
-  })
-
-  it('clears and reports activity on pending overflow', () => {
-    const { events, scanner } = makeScanner()
-    scanner.feed(`\x1b[${'x'.repeat(40)}`)
-    expect(events.every((event) => event.type === 'activity')).toBe(true)
-    expect(events.length).toBeGreaterThan(0)
-    scanner.feed('\x1b[I')
-    expect(events.at(-1)).toEqual({ type: 'focus', focused: true })
-  })
-
-  it('wires stdin/stdout through start/stop', () => {
-    const writes: string[] = []
-    const listeners: Array<(chunk: string) => void> = []
-    const { events, scanner } = makeScanner({
-      stdout: { write: (chunk: string) => writes.push(chunk) },
-      stdin: {
-        on: (_event: 'data', listener: (chunk: string) => void) => {
-          listeners.push(listener)
-        },
-        removeListener: (_event: 'data', listener: (chunk: string) => void) => {
-          const index = listeners.indexOf(listener)
-          if (index !== -1) listeners.splice(index, 1)
-        },
-      },
-    })
-
-    scanner.start()
-    scanner.start()
-    expect(writes).toEqual(['\x1b[?1004h'])
-    expect(listeners.length).toBe(1)
-
-    listeners[0]?.('\x1b[I')
-    expect(events).toEqual([{ type: 'focus', focused: true }])
-
-    scanner.stop()
-    scanner.stop()
-    expect(writes).toEqual(['\x1b[?1004h', '\x1b[?1004l'])
-    expect(listeners.length).toBe(0)
-
-    scanner.feed('x')
+    scanner.feed('O')
     expect(events).toEqual([
-      { type: 'focus', focused: true },
       { type: 'activity' },
+      { type: 'focus', focused: false },
     ])
+  })
+
+  it('reports a lone escape as activity without holding it forever', () => {
+    const { events, scanner } = makeScanner()
+
+    scanner.feed('\x1b')
+    expect(events).toEqual([])
+
+    scanner.feed('j')
+    expect(events).toEqual([{ type: 'activity' }])
+  })
+
+  it('enables focus reporting on start and restores it on stop', () => {
+    const stdin = { on: vi.fn(), removeListener: vi.fn() }
+    const stdout = { write: vi.fn() }
+    const proc = { on: vi.fn(), off: vi.fn() }
+    const wired = new FocusInputScanner(
+      { onActivity: () => {}, onFocus: () => {} },
+      { stdin, stdout, process: proc },
+    )
+
+    wired.start()
+    wired.start()
+    expect(stdout.write).toHaveBeenCalledWith('\x1b[?1004h')
+    expect(stdin.on).toHaveBeenCalledTimes(1)
+    expect(proc.on).toHaveBeenCalledTimes(1)
+
+    wired.stop()
+    expect(stdout.write).toHaveBeenLastCalledWith('\x1b[?1004l')
+    expect(stdin.removeListener).toHaveBeenCalledTimes(1)
+    expect(proc.off).toHaveBeenCalledTimes(1)
   })
 
   it('disables focus reporting from the process exit hook', () => {
-    const writes: string[] = []
-    const exitListeners: Array<() => void> = []
+    const stdout = { write: vi.fn() }
+    let exitHandler: (() => void) | undefined
     const proc = {
-      on: (_event: 'exit', listener: () => void) => {
-        exitListeners.push(listener)
-      },
-      off: (_event: 'exit', listener: () => void) => {
-        const index = exitListeners.indexOf(listener)
-        if (index !== -1) exitListeners.splice(index, 1)
-      },
+      on: vi.fn((_event: 'exit', listener: () => void) => {
+        exitHandler = listener
+      }),
+      off: vi.fn(),
     }
-    const { scanner } = makeScanner({
-      stdout: { write: (chunk: string) => writes.push(chunk) },
-      stdin: {
-        on: () => {},
-        removeListener: () => {},
+    const wired = new FocusInputScanner(
+      { onActivity: () => {}, onFocus: () => {} },
+      {
+        stdin: { on: vi.fn(), removeListener: vi.fn() },
+        stdout,
+        process: proc,
       },
-      process: proc,
-    })
+    )
 
-    scanner.start()
-    expect(exitListeners.length).toBe(1)
-    // Simulate the agent dying without a `session_shutdown`.
-    exitListeners[0]?.()
-    expect(writes).toEqual(['\x1b[?1004h', '\x1b[?1004l'])
+    wired.start()
+    stdout.write.mockClear()
+    exitHandler?.()
 
-    writes.length = 0
-    scanner.stop()
-    expect(exitListeners.length).toBe(0)
-    expect(writes).toEqual(['\x1b[?1004l'])
-  })
-
-  it('clears pending state idempotently', () => {
-    const { events, scanner } = makeScanner()
-    scanner.feed('\x1b[')
-    scanner.clear()
-    scanner.clear()
-    vi.advanceTimersByTime(100)
-    expect(events).toEqual([])
-    scanner.feed('\x1b[I')
-    expect(events).toEqual([{ type: 'focus', focused: true }])
+    expect(stdout.write).toHaveBeenCalledWith('\x1b[?1004l')
   })
 })
