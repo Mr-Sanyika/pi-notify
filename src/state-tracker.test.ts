@@ -2,8 +2,7 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ResolvedNotifyConfig } from './config.js'
-import type { JobTracker } from './jobs.js'
-import { PI_NOTIFY_EVENT, StateTracker } from './state-tracker.js'
+import { StateTracker } from './state-tracker.js'
 
 type EventsListener = (payload?: unknown) => void
 
@@ -56,47 +55,17 @@ function makeFakePi(): FakePi {
   }
 }
 
-type FakeJobTracker = {
-  hasActiveJobs: boolean
-  onStart: (listener: () => void) => () => void
-  onEnd: (listener: () => void) => () => void
-  startListener?: () => void
-  endListener?: () => void
-}
-
-function makeFakeJobTracker(): FakeJobTracker {
-  const instance: FakeJobTracker = {
-    hasActiveJobs: false,
-    onStart: (listener: () => void) => {
-      instance.startListener = listener
-      return () => {}
-    },
-    onEnd: (listener: () => void) => {
-      instance.endListener = listener
-      return () => {}
-    },
-    startListener: undefined as (() => void) | undefined,
-    endListener: undefined as (() => void) | undefined,
-  }
-  return instance
-}
-
 async function flush(): Promise<void> {
   for (let i = 0; i < 5; i++) await Promise.resolve()
 }
 
 const BASE_CONFIG: ResolvedNotifyConfig = {
   enabled: true,
-  notifyTools: new Set(['bash', 'read']),
-  events: {
-    'my:custom:event': 'msg',
-    'disabled:channel': false,
-  },
   finished: true,
   onlyNotifyWhenUnfocused: true,
   unfocusedActivityThresholdMs: 0,
   notifySymbol: '',
-} as unknown as ResolvedNotifyConfig
+}
 
 function makeTracker(
   pi: FakePi,
@@ -104,17 +73,11 @@ function makeTracker(
 ): {
   tracker: StateTracker
   bodies: string[]
-  jobs: FakeJobTracker
 } {
   const bodies: string[] = []
-  const jobs = makeFakeJobTracker()
-  const tracker = new StateTracker(
-    pi as unknown as ExtensionAPI,
-    jobs as unknown as JobTracker,
-    config,
-  )
+  const tracker = new StateTracker(pi as unknown as ExtensionAPI, config)
   tracker.register((body) => bodies.push(body))
-  return { tracker, bodies, jobs }
+  return { tracker, bodies }
 }
 
 describe('StateTracker', () => {
@@ -124,45 +87,6 @@ describe('StateTracker', () => {
 
   afterEach(() => {
     vi.useRealTimers()
-  })
-
-  it('notifies with the configured message when a custom event fires', () => {
-    const pi = makeFakePi()
-    const { bodies } = makeTracker(pi)
-
-    pi.emitEvent('my:custom:event', {})
-
-    expect(bodies).toEqual(['msg'])
-  })
-
-  it('does not notify for events disabled with false', () => {
-    const pi = makeFakePi()
-    const { bodies } = makeTracker(pi)
-
-    pi.emitEvent('disabled:channel', {})
-
-    expect(bodies).toEqual([])
-  })
-
-  it('does not notify for events disabled with an empty string', () => {
-    const pi = makeFakePi()
-    const { bodies } = makeTracker(pi, {
-      ...BASE_CONFIG,
-      events: { 'my:custom:event': '' },
-    })
-
-    pi.emitEvent('my:custom:event', {})
-
-    expect(bodies).toEqual([])
-  })
-
-  it('notifies from the custom channel', () => {
-    const pi = makeFakePi()
-    const { bodies } = makeTracker(pi)
-
-    pi.emitEvent(PI_NOTIFY_EVENT, 'custom payload')
-
-    expect(bodies).toEqual(['custom payload'])
   })
 
   it('notifies on ui_prompt_start with kind and title', () => {
@@ -218,25 +142,6 @@ describe('StateTracker', () => {
     expect(bodies).toEqual(['Waiting: Prompt'])
   })
 
-  it('stays quiet after the prompt closes while jobs are active', async () => {
-    const pi = makeFakePi()
-    const { bodies, jobs } = makeTracker(pi)
-
-    jobs.hasActiveJobs = true
-    jobs.startListener?.()
-    pi.emit('ui_prompt_start', {
-      type: 'ui_prompt_start',
-      reason: 'ui_prompt',
-      kind: 'custom',
-    })
-    pi.emit('ui_prompt_end')
-    vi.advanceTimersByTime(10000)
-
-    await flush()
-
-    expect(bodies).toEqual(['Waiting: Prompt'])
-  })
-
   it('only notifies Idle after the last nested prompt closes', async () => {
     const pi = makeFakePi()
     const { bodies } = makeTracker(pi)
@@ -268,67 +173,12 @@ describe('StateTracker', () => {
     expect(bodies).toEqual(['Waiting: Prompt', 'Waiting: Select — Pick one'])
   })
 
-  it('notifies for tools in notifyTools', () => {
-    const pi = makeFakePi()
-    const { bodies } = makeTracker(pi)
-
-    pi.emit('tool_call', {
-      type: 'tool_call',
-      toolCallId: 't1',
-      toolName: 'read',
-    })
-
-    expect(bodies).toEqual(['Tool call: read'])
-  })
-
-  it('does not notify for tools not in notifyTools', () => {
-    const pi = makeFakePi()
-    const { bodies } = makeTracker(pi)
-
-    pi.emit('tool_call', {
-      type: 'tool_call',
-      toolCallId: 't1',
-      toolName: 'grep',
-    })
-
-    expect(bodies).toEqual([])
-  })
-
-  it('does not notify when notifyTools is empty', () => {
-    const pi = makeFakePi()
-    const { bodies } = makeTracker(pi, {
-      ...BASE_CONFIG,
-      notifyTools: new Set([]),
-    })
-
-    pi.emit('tool_call', {
-      type: 'tool_call',
-      toolCallId: 't1',
-      toolName: 'bash',
-    })
-
-    expect(bodies).toEqual([])
-  })
-
   it('notifies Idle on idle when there was activity', async () => {
     const pi = makeFakePi()
     const { bodies } = makeTracker(pi)
 
     pi.emit('turn_start')
     pi.emit('agent_settled')
-    vi.advanceTimersByTime(10000)
-
-    await flush()
-
-    expect(bodies).toEqual(['Idle'])
-  })
-
-  it('notifies Idle after background job activity without a turn', async () => {
-    const pi = makeFakePi()
-    const { bodies, jobs } = makeTracker(pi)
-
-    jobs.startListener?.()
-    jobs.endListener?.()
     vi.advanceTimersByTime(10000)
 
     await flush()
@@ -380,14 +230,14 @@ describe('StateTracker', () => {
 
     await flush()
 
-    // The notifying tool call cleared the pending timer and reset `running`.
-    expect(bodies).toEqual(['Tool call: bash'])
+    // The tool call cleared the pending timer, so 18s after settling is quiet.
+    expect(bodies).toEqual([])
 
     pi.emit('agent_settled')
     vi.advanceTimersByTime(10000)
 
     await flush()
 
-    expect(bodies).toEqual(['Tool call: bash'])
+    expect(bodies).toEqual(['Idle'])
   })
 })

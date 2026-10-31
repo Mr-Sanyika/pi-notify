@@ -5,17 +5,8 @@ import { getAgentDir } from '@earendil-works/pi-coding-agent'
 import { type Static, Type } from 'typebox'
 import { Value } from 'typebox/value'
 
-// `false` disables the event
-const NotifyEventsSchema = Type.Record(
-  Type.String(),
-  Type.Union([Type.String(), Type.Literal(false)]),
-)
-type NotifyEventsConfig = Static<typeof NotifyEventsSchema>
-
 const NotifyConfigSchema = Type.Object({
   enabled: Type.Optional(Type.Boolean()),
-  notifyTools: Type.Optional(Type.Array(Type.String())),
-  events: Type.Optional(NotifyEventsSchema),
   finished: Type.Optional(Type.Boolean()),
   onlyNotifyWhenUnfocused: Type.Optional(Type.Boolean()),
   unfocusedActivityThresholdSecs: Type.Optional(Type.Number()),
@@ -25,8 +16,6 @@ type NotifyConfig = Static<typeof NotifyConfigSchema>
 
 export interface ResolvedNotifyConfig {
   readonly enabled: boolean
-  readonly notifyTools: ReadonlySet<string>
-  readonly events: NotifyEventsConfig
   readonly finished: boolean
   readonly onlyNotifyWhenUnfocused: boolean
   readonly unfocusedActivityThresholdMs: number
@@ -89,8 +78,6 @@ export function loadConfig(): ResolvedNotifyConfig {
   const cfg: NotifyConfig = result.status === 'valid' ? result.piNotify : {}
   return {
     enabled: cfg.enabled ?? true,
-    notifyTools: new Set(cfg.notifyTools ?? []),
-    events: cfg.events ?? {},
     finished: cfg.finished ?? true,
     onlyNotifyWhenUnfocused: cfg.onlyNotifyWhenUnfocused ?? true,
     unfocusedActivityThresholdMs: Math.max(

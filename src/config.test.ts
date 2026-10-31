@@ -9,8 +9,6 @@ vi.mock('node:fs', () => ({
 
 const ALL_DEFAULTS = {
   enabled: true,
-  notifyTools: new Set(),
-  events: {},
   finished: true,
   onlyNotifyWhenUnfocused: true,
   unfocusedActivityThresholdMs: 30000,
@@ -44,8 +42,6 @@ describe('parseConfig', () => {
     const content = JSON.stringify({
       piNotify: {
         enabled: false,
-        notifyTools: ['a', 'b'],
-        events: { session: 'all', finished: false },
         finished: false,
         onlyNotifyWhenUnfocused: false,
         unfocusedActivityThresholdSecs: 5,
@@ -71,7 +67,6 @@ describe('parseConfig', () => {
     const content = JSON.stringify({
       piNotify: {
         enabled: 'yes',
-        events: 'all',
         unfocusedActivityThresholdSecs: 'x',
       },
     })

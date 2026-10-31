@@ -2,7 +2,9 @@
 
 A notification extension for the [pi](https://github.com/earendil-works/pi-coding-agent) coding agent.
 
-`@raidou/pi-notify` fires a native desktop notification on idle, tool calls (optional, e.g. `Tool call: ask_user`), user-facing UI prompts (via pi's `ui_prompt_start`, e.g. permission approvals or `select`/`confirm`/`input` dialogs, requires pi >= 0.85.0), and custom pi events.
+`@raidou/pi-notify` fires a Linux desktop notification when the agent goes idle and when pi
+asks you something (permission approvals, `select`/`confirm`/`input` dialogs, via pi's
+`ui_prompt_start`, requires pi >= 0.85.0).
 
 ## Requirements
 
@@ -42,13 +44,8 @@ All options live under the `piNotify` key in `~/.pi/agent/settings.json`. Everyt
 {
   "piNotify": {
     "enabled": true, // master on/off switch (default: true)
-    "notifyTools": [], // tools that trigger "Tool call" notifications (default: empty, i.e. no tool notifications)
     "notifySymbol": "🔔", // symbol appended to tmux window title (empty string to disable)
     "finished": true, // enable/disable "Idle" notification
-    "events": {
-      "my:custom:event": "Custom event triggered", // custom event channel -> notification message
-      "other:event": false, // set to false to disable a specific event
-    },
     "finishedThrottleSecs": 0, // 0 = always notify; >0 = skip finished toasts for runs shorter than N seconds
     "onlyNotifyWhenUnfocused": true, // only notify when user has been inactive
     "unfocusedActivityThresholdSecs": 30, // seconds of inactivity before considering user "unfocused"
@@ -60,33 +57,12 @@ All options live under the `piNotify` key in `~/.pi/agent/settings.json`. Everyt
 
 | Event             | Source                                                                | Default body                      |
 | ----------------- | --------------------------------------------------------------------- | --------------------------------- |
-| **Finished**      | `agent_settled` (pi idle, no active jobs)                             | `Idle`                            |
-| **Tool calls**    | `tool_call` on tools in `notifyTools` (default: none)                 | `Tool call: <toolName>`           |
+| **Finished**      | `agent_settled`, 10 s later                                          | `Idle`                            |
 | **UI prompts**    | `ui_prompt_start` (requires pi >= 0.85.0)                             | `Waiting: <kind>[ — <title>]` |
-| **Custom events** | Custom pi event channels configured in `events`                       | Customizable                      |
-| **External API**  | `pi.events.emit('pi-notify:notify', 'message')` from other extensions | The emitted message               |
 
 ### tmux window marker
 
 On tmux, a notification appends `notifySymbol` (default `🔔`) to the window title and removes it again when you focus that pane, so an idle window that wants attention is visible in the status bar. Nothing is written to disk for this; the marker is the window title itself.
-
-### Job tracking for background tasks
-
-Extensions running background tasks can prevent spurious "Idle" notifications by emitting job lifecycle events. Notifications on `agent_settled` are suppressed while jobs are active. Custom event notifications are soft dependencies: if a package that broadcasts a specific event is not installed, that notification is skipped.
-
-```typescript
-import { JOB_START_EVENT, JOB_END_EVENT } from '@raidou/pi-notify'
-
-function startBackgroundJob(jobId: string): void {
-  pi.events.emit(JOB_START_EVENT, { id: jobId })
-}
-
-function endBackgroundJob(jobId: string): void {
-  pi.events.emit(JOB_END_EVENT, { id: jobId })
-}
-```
-
-Events are automatically cleaned up on `session_shutdown`.
 
 ## Commands
 
