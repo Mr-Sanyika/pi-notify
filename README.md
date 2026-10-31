@@ -9,8 +9,8 @@ A notification extension for the [pi](https://github.com/earendil-works/pi-codin
 | Requirement | Why |
 | --- | --- |
 | `pi` >= 0.85.0 | UI prompt notifications use the `ui_prompt_start` event. |
-| A desktop notifier | Linux: `notify-send` plus a running notification daemon. macOS: Notification Center. Windows and WSL2: PowerShell toast (WSL is detected and `powershell.exe` used directly). |
-| tmux >= 3.3 with `set -g allow-passthrough all` | Only needed for OSC notifications to reach the outer terminal from inside tmux. |
+| Linux with `notify-send` (libnotify) | The only delivery mechanism. A notification daemon (mako, dunst, GNOME, KDE, …) renders the toasts. |
+| tmux (optional) | Only for the window marker; without tmux, notifications still work. |
 
 The extension runs inside pi's own runtime (a Bun single-file binary), not plain Node. Bugs that only reproduce there are still real; report them with the pi version from `pi --version`. Known problems are tracked in the [issue tracker](https://github.com/weirongxu/pi-notify/issues).
 
@@ -44,9 +44,6 @@ All options live under the `piNotify` key in `~/.pi/agent/settings.json`. Everyt
     "enabled": true, // master on/off switch (default: true)
     "notifyTools": [], // tools that trigger "Tool call" notifications (default: empty, i.e. no tool notifications)
     "notifySymbol": "🔔", // symbol appended to tmux window title (empty string to disable)
-    "desktop": true, // send native desktop notifications via node-notifier / Windows toast (default: true)
-    "osc777": true, // emit terminal OSC 777 notifications, title + body (default: true)
-    "osc9": false, // emit terminal OSC 9 notifications, body only (default: false; enable for iTerm2/mintty, or instead of osc777)
     "finished": true, // enable/disable "Idle" notification
     "events": {
       "my:custom:event": "Custom event triggered", // custom event channel -> notification message
@@ -101,20 +98,12 @@ Pass a string argument (e.g., `/notify-test hello`) to override the body.
 
 ## Platform support
 
-`@raidou/pi-notify` prefers `node-notifier` (macOS Notification Center, Linux `notify-send`, native Windows toaster).
+Linux only. Notifications are a single `notify-send` call, so any daemon that implements the
+freedesktop notification spec works, and the extension writes no terminal escape sequences.
 
-**WSL2 note:** `node-notifier` reports `process.platform === "linux"` and would route to `notify-send`, which is usually not installed under WSL and fails silently. `@raidou/pi-notify` detects WSL and raises a Windows toast via `powershell.exe` directly, so notifications reach the Windows Action Center out of the box.
+`notify-send` missing from `PATH` is not an error: delivery is disabled for the session and
+`/notify-test` says so.
 
 ### Focus reporting
 
 While a TUI session runs, the extension enables terminal focus reporting (`DECSET 1004`) so it can tell "user is looking at this pane" from "user switched away", and disables it again from `session_shutdown` and from a `process.on('exit')` hook. A `SIGKILL` cannot be intercepted: after `kill -9`, the terminal keeps sending focus events until it is reset (or closed), which some shells echo as stray `^[[I` / `^[[O`. Known limitation: fullscreen/screen-mode switches can turn focus reporting off for the rest of the session, in which case the extension falls back to inactivity timing (`unfocusedActivityThresholdSecs`).
-
-### Terminal notifications (OSC)
-
-OSC 777 carries title and body (rxvt, kitty, Ghostty), OSC 9 carries the body only (iTerm2, mintty, kitty, Ghostty). Only one of them is on by default: emitting both makes every notification show up twice in terminals that implement both. Enable `osc9` instead of `osc777` when your terminal does not understand OSC 777.
-
-Terminal notifications also work over SSH. Inside tmux (>= 3.3), add the following to `~/.tmux.conf`:
-
-```tmux
-set -g allow-passthrough all
-```

@@ -15,9 +15,6 @@ const ALL_DEFAULTS = {
   onlyNotifyWhenUnfocused: true,
   unfocusedActivityThresholdMs: 30000,
   notifySymbol: '🔔',
-  desktop: true,
-  osc777: true,
-  osc9: false,
 }
 
 describe('parseConfig', () => {
@@ -53,9 +50,6 @@ describe('parseConfig', () => {
         onlyNotifyWhenUnfocused: false,
         unfocusedActivityThresholdSecs: 5,
         notifySymbol: '!',
-        desktop: false,
-        osc777: false,
-        osc9: true,
       },
     })
     expect(parseConfig(content)).toEqual({
@@ -71,16 +65,6 @@ describe('parseConfig', () => {
       settings: { piNotify: 'x' },
       piNotify: {},
     })
-  })
-
-  it('respects explicit osc777/osc9 options', async () => {
-    const { readFileSync } = await import('node:fs')
-    vi.mocked(readFileSync).mockReturnValue(
-      JSON.stringify({ piNotify: { osc777: false, osc9: true } }),
-    )
-    const config = loadConfig()
-    expect(config.osc777).toBe(false)
-    expect(config.osc9).toBe(true)
   })
 
   it('falls back to empty piNotify on invalid field types', () => {
@@ -108,15 +92,6 @@ describe('loadConfig', () => {
 
   it('returns all defaults for empty settings', () => {
     expect(loadConfig()).toEqual(ALL_DEFAULTS)
-  })
-
-  it('respects explicit desktop false', async () => {
-    const { readFileSync } = await import('node:fs')
-    vi.mocked(readFileSync).mockReturnValue(
-      JSON.stringify({ piNotify: { desktop: false } }),
-    )
-    const config = loadConfig()
-    expect(config.desktop).toBe(false)
   })
 
   it('returns all defaults and reads nothing when settings file is missing', async () => {

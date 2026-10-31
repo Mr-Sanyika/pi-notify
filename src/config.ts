@@ -20,9 +20,6 @@ const NotifyConfigSchema = Type.Object({
   onlyNotifyWhenUnfocused: Type.Optional(Type.Boolean()),
   unfocusedActivityThresholdSecs: Type.Optional(Type.Number()),
   notifySymbol: Type.Optional(Type.String()),
-  desktop: Type.Optional(Type.Boolean()),
-  osc777: Type.Optional(Type.Boolean()),
-  osc9: Type.Optional(Type.Boolean()),
 })
 type NotifyConfig = Static<typeof NotifyConfigSchema>
 
@@ -34,9 +31,6 @@ export interface ResolvedNotifyConfig {
   readonly onlyNotifyWhenUnfocused: boolean
   readonly unfocusedActivityThresholdMs: number
   readonly notifySymbol: string
-  readonly desktop: boolean
-  readonly osc777: boolean
-  readonly osc9: boolean
 }
 
 const DEFAULT_NOTIFY_SYMBOL = '🔔'
@@ -104,8 +98,5 @@ export function loadConfig(): ResolvedNotifyConfig {
       (cfg.unfocusedActivityThresholdSecs ?? 30) * 1000,
     ),
     notifySymbol: cfg.notifySymbol ?? DEFAULT_NOTIFY_SYMBOL,
-    desktop: cfg.desktop ?? true,
-    osc777: cfg.osc777 ?? true,
-    osc9: cfg.osc9 ?? false,
   }
 }
