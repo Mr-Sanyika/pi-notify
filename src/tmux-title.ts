@@ -13,6 +13,33 @@ const LIST_FORMAT = '#{pane_tty}\t#{window_id}'
 const NEWLINE = '\n'
 const TAB = '\t'
 
+/** Run a tmux command and return its trimmed stdout, or undefined on failure. */
+function tmuxQuery(args: readonly string[]): string | undefined {
+  try {
+    const out = execFileSync('tmux', args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    return out.trim() || undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** Run a tmux command for its effect; the window title is never critical. */
+function tmuxRun(args: readonly string[]): void {
+  try {
+    execFileSync('tmux', args, { stdio: 'ignore' })
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * Appends `notifySymbol` to the tmux window title while a notification is
+ * unread, so a background window that wants attention is visible in the status
+ * bar. Purely cosmetic: every tmux call is best effort.
+ */
 export class TmuxTitleTracker extends Registrar {
   private readonly config: ResolvedNotifyConfig
   private windowId: string | undefined
@@ -33,11 +60,18 @@ export class TmuxTitleTracker extends Registrar {
     void notify
     this.pi.on('session_start', (_event, ctx) => {
       if (ctx.mode !== 'tui' || !this.enabled) return
+      // A previous pi may have left its marker behind.
       this.restore()
       const id = this.queryCurrentWindowId()
       if (id === undefined) return
       this.windowId = id
-      this.originalTitle = this.queryWindowName(id)
+      this.originalTitle = tmuxQuery([
+        'display-message',
+        '-t',
+        id,
+        '-p',
+        WINDOW_NAME_FORMAT,
+      ])
       this.autoRename = this.queryAutomaticRename(id)
     })
   }
@@ -50,10 +84,12 @@ export class TmuxTitleTracker extends Registrar {
       this.originalTitle === undefined
     )
       return
-    this.renameWindow(
+    tmuxRun([
+      'rename-window',
+      '-t',
       this.windowId,
       `${this.originalTitle}${this.config.notifySymbol}`,
-    )
+    ])
     this.modified = true
   }
 
@@ -65,12 +101,20 @@ export class TmuxTitleTracker extends Registrar {
       this.originalTitle === undefined
     )
       return
-    this.renameWindow(this.windowId, this.originalTitle)
-    if (this.autoRename === undefined) {
-      this.unsetAutomaticRename(this.windowId)
-    } else {
-      this.setAutomaticRename(this.windowId, this.autoRename)
-    }
+    tmuxRun(['rename-window', '-t', this.windowId, this.originalTitle])
+    // Renaming pins the window name, so put automatic-rename back the way it
+    // was — unset when the window inherited the global value.
+    tmuxRun(
+      this.autoRename === undefined
+        ? ['set-window-option', '-t', this.windowId, '-u', 'automatic-rename']
+        : [
+            'set-window-option',
+            '-t',
+            this.windowId,
+            'automatic-rename',
+            this.autoRename ? 'on' : 'off',
+          ],
+    )
     this.modified = false
   }
 
@@ -90,33 +134,9 @@ export class TmuxTitleTracker extends Registrar {
       const id = this.findWindowByTty(tty)
       if (id !== undefined) return id
     }
-    return this.queryActiveWindowId()
-  }
-
-  private queryWindowName(windowId: string): string | undefined {
-    try {
-      const name = execFileSync(
-        'tmux',
-        ['display-message', '-t', windowId, '-p', WINDOW_NAME_FORMAT],
-        {
-          encoding: 'utf8',
-          stdio: ['ignore', 'pipe', 'ignore'],
-        },
-      )
-      return name.trim() || undefined
-    } catch {
-      return undefined
-    }
-  }
-
-  private renameWindow(windowId: string, name: string): void {
-    try {
-      execFileSync('tmux', ['rename-window', '-t', windowId, name], {
-        stdio: 'ignore',
-      })
-    } catch {
-      // best-effort; the window title is non-critical
-    }
+    // Fall back to the active window when this process is not attached to a tty
+    // we can resolve (e.g. a piped run inside an active pane).
+    return tmuxQuery(['display-message', '-p', WINDOW_ID_FORMAT])
   }
 
   private ourTty(): string | undefined {
@@ -125,100 +145,32 @@ export class TmuxTitleTracker extends Registrar {
         const target = readlinkSync(`/proc/self/fd/${fd}`)
         if (target.startsWith('/dev/')) return target
       } catch {
-        // fd is not a tty, or platform without /proc/self/fd
+        // fd is not a tty
       }
     }
     return undefined
   }
 
   private findWindowByTty(tty: string): string | undefined {
-    try {
-      const out = execFileSync(
-        'tmux',
-        ['list-panes', '-a', '-F', LIST_FORMAT],
-        {
-          encoding: 'utf8',
-          stdio: ['ignore', 'pipe', 'ignore'],
-        },
-      )
-      for (const line of out.split(NEWLINE)) {
-        const [paneTty, windowId] = line.split(TAB)
-        if (paneTty === tty) return windowId
-      }
-      return undefined
-    } catch {
-      return undefined
+    const out = tmuxQuery(['list-panes', '-a', '-F', LIST_FORMAT])
+    if (out === undefined) return undefined
+    for (const line of out.split(NEWLINE)) {
+      const [paneTty, windowId] = line.split(TAB)
+      if (paneTty === tty) return windowId
     }
-  }
-
-  private queryActiveWindowId(): string | undefined {
-    try {
-      const id = execFileSync(
-        'tmux',
-        ['display-message', '-p', WINDOW_ID_FORMAT],
-        {
-          encoding: 'utf8',
-          stdio: ['ignore', 'pipe', 'ignore'],
-        },
-      )
-      return id.trim() || undefined
-    } catch {
-      return undefined
-    }
+    return undefined
   }
 
   private queryAutomaticRename(windowId: string): boolean | undefined {
-    try {
-      const value = execFileSync(
-        'tmux',
-        ['show-window-options', '-t', windowId, '-v', 'automatic-rename'],
-        {
-          encoding: 'utf8',
-          stdio: ['ignore', 'pipe', 'ignore'],
-        },
-      )
-      const trimmed = value.trim()
-      // Empty output means no window-local override exists; the window
-      // inherits the global option. Restore by unsetting, not by forcing
-      // a value, so it keeps inheriting whatever the global is.
-      if (trimmed === '') return undefined
-      return trimmed === 'on'
-    } catch {
-      return undefined
-    }
-  }
-
-  private setAutomaticRename(windowId: string, enabled: boolean): void {
-    try {
-      execFileSync(
-        'tmux',
-        [
-          'set-window-option',
-          '-t',
-          windowId,
-          'automatic-rename',
-          enabled ? 'on' : 'off',
-        ],
-        {
-          stdio: 'ignore',
-        },
-      )
-    } catch {
-      // best-effort; the window title is non-critical
-    }
-  }
-
-  private unsetAutomaticRename(windowId: string): void {
-    try {
-      execFileSync(
-        'tmux',
-        ['set-window-option', '-t', windowId, '-u', 'automatic-rename'],
-        {
-          stdio: 'ignore',
-        },
-      )
-    } catch {
-      // best-effort; the window title is non-critical
-    }
+    // Empty output means the window inherits the global option.
+    const value = tmuxQuery([
+      'show-window-options',
+      '-t',
+      windowId,
+      '-v',
+      'automatic-rename',
+    ])
+    if (value === undefined) return undefined
+    return value === 'on'
   }
 }
