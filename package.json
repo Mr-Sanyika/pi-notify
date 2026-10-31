@@ -34,9 +34,7 @@
     "test:unit": "vitest run",
     "lint:check": "eslint ."
   },
-  "dependencies": {
-    "emittery": "^2.0.0"
-  },
+  "dependencies": {},
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*",
