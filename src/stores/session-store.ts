@@ -34,9 +34,18 @@ export class SessionStore extends Registrar {
     await this.writeQueue
   }
 
+  /**
+   * State tracking is best effort: a failed write (lock contention, unwritable
+   * agent dir, ...) must not take the agent down, so failures are swallowed
+   * here and never escape into an event listener.
+   */
   private async saveSession(nextState: SessionState): Promise<void> {
     this.queueWrite(async () => {
-      await this.writeSession(nextState)
+      try {
+        await this.writeSession(nextState)
+      } catch {
+        // Dashboard state is non-critical.
+      }
     })
   }
 

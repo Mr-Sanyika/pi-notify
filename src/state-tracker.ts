@@ -11,6 +11,15 @@ import type { NotifyAction } from './shared/types.js'
 
 export const PI_NOTIFY_EVENT = 'pi-notify:notify'
 
+type StateTrackerEventMap = {
+  running: never
+  idle: never
+  tool: string
+  event: string
+  ui_prompt: string
+  notify: string
+}
+
 const IDLE_TIMEOUT_MS = 10000
 
 const PROMPT_KIND_LABELS: Record<UIPromptKind, string> = {
@@ -28,14 +37,21 @@ function promptMessage(kind: UIPromptKind, title?: string): string {
 }
 
 export class StateTracker extends Registrar {
-  readonly events = new Emittery<{
-    running: never
-    idle: never
-    tool: string
-    event: string
-    ui_prompt: string
-    notify: string
-  }>()
+  readonly events = new Emittery<StateTrackerEventMap>()
+
+  /**
+   * Emittery returns a promise that rejects when any listener throws. Bun
+   * treats that as fatal for the whole agent process, so every emit is
+   * observed and swallowed here instead of being fire-and-forget.
+   */
+  private emitSafe(name: keyof StateTrackerEventMap, data?: string): void {
+    // Emittery types `never`-valued events as no-argument emits.
+    const result: Promise<void> =
+      data === undefined
+        ? this.events.emit(name as 'idle')
+        : this.events.emit(name as 'tool', data)
+    void result.catch(() => {})
+  }
 
   private readonly jobTracker: JobTracker
   private readonly config: ResolvedNotifyConfig
@@ -61,7 +77,7 @@ export class StateTracker extends Registrar {
       this.idleTimer = null
       const wasRunning = this.running
       this.running = false
-      void this.events.emit('idle')
+      this.emitSafe('idle')
       if (wasRunning && this.config.finished) {
         this.notify('Idle')
       }
@@ -78,7 +94,7 @@ export class StateTracker extends Registrar {
   private markRunning(): void {
     if (this.running) return
     this.running = true
-    void this.events.emit('running')
+    this.emitSafe('running')
   }
 
   private setupPiEvents() {
@@ -87,7 +103,7 @@ export class StateTracker extends Registrar {
       const unsubscribe = this.pi.events.on(channel, () => {
         this.notify(message)
         this.running = false
-        void this.events.emit('event', channel)
+        this.emitSafe('event', channel)
       })
       this.unsubscribes.push(unsubscribe)
     }
@@ -96,7 +112,7 @@ export class StateTracker extends Registrar {
       if (typeof payload !== 'string' || payload === '') return
       this.notify(payload)
       this.running = false
-      void this.events.emit('notify', payload)
+      this.emitSafe('notify', payload)
     })
     this.unsubscribes.push(customEventUnsub)
   }
@@ -107,7 +123,7 @@ export class StateTracker extends Registrar {
       this.uiPromptDepth++
       this.notify(promptMessage(event.kind, event.title))
       this.running = false
-      void this.events.emit('ui_prompt', `${event.kind}:${event.title ?? ''}`)
+      this.emitSafe('ui_prompt', `${event.kind}:${event.title ?? ''}`)
     })
 
     this.pi.on('ui_prompt_end', () => {
@@ -115,7 +131,7 @@ export class StateTracker extends Registrar {
       if (this.uiPromptDepth > 0) return
       // Revert the transient prompt state once the last prompt closes.
       if (this.running || this.jobTracker.hasActiveJobs) {
-        void this.events.emit('running')
+        this.emitSafe('running')
       } else {
         this.startIdleTimer()
       }
@@ -127,7 +143,7 @@ export class StateTracker extends Registrar {
       if (this.config.notifyTools.has(event.toolName)) {
         this.notify(`Tool call: ${event.toolName}`)
         this.running = false
-        void this.events.emit('tool', event.toolName)
+        this.emitSafe('tool', event.toolName)
       }
       this.clearIdleTimer()
     })
