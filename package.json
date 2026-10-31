@@ -35,8 +35,7 @@
     "lint:check": "eslint ."
   },
   "dependencies": {
-    "emittery": "^2.0.0",
-    "node-notifier": "^10.0.1"
+    "emittery": "^2.0.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",

@@ -26,7 +26,7 @@ export default function piNotifyExtension(pi: ExtensionAPI): void {
   const stateTracker = new StateTracker(pi, jobTracker, config)
   const unreadTracker = new UnreadTracker({ titleTracker: tmuxTitleTracker })
   const focusTracker = new FocusTracker(pi, unreadTracker)
-  const notifyTest = new NotifyTest(pi, title, config, unreadTracker)
+  const notifyTest = new NotifyTest(pi, title, unreadTracker)
   const sessionState = new SessionState(pi)
 
   function notifyReal(body: string): void {
@@ -40,7 +40,7 @@ export default function piNotifyExtension(pi: ExtensionAPI): void {
       if (focusTracker.isFocused ?? recentlyActive) return
     }
     unreadTracker.markUnread()
-    notify(title, body, config)
+    notify(title, body)
   }
 
   const registrables: Registerable[] = [

@@ -1,145 +1,83 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { execFile } from 'node:child_process'
 
-import { notify } from './notifier.js'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({
-  execFile: vi.fn(),
-  notify: vi.fn(),
-}))
+vi.mock('node:child_process', () => ({ execFile: vi.fn() }))
 
-vi.mock('node:child_process', () => ({ execFile: mocks.execFile }))
+const execFileMock = vi.mocked(execFile)
 
-vi.mock('node-notifier', () => ({ default: { notify: mocks.notify } }))
-
-const ESC = '\x1b'
-const BEL = '\x07'
-
-const OSC_SEQUENCES = `${ESC}]777;notify;t;b${BEL}${ESC}]9;b${BEL}`
-const OSC_SEQUENCES_TMUX =
-  `${ESC}Ptmux;${ESC}${ESC}]777;notify;t;b${BEL}${ESC}\\` +
-  `${ESC}Ptmux;${ESC}${ESC}]9;b${BEL}${ESC}\\`
-
-function nativeCallCount(): number {
-  return mocks.execFile.mock.calls.length + mocks.notify.mock.calls.length
+async function loadNotifier() {
+  vi.resetModules()
+  return await import('./notifier.js')
 }
 
-// Stub stdout as a TTY and capture writes.
-function stubTtyStdout(isTTY: boolean): { writes: string[]; restore(): void } {
-  const writes: string[] = []
-  const ttyDescriptor = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
-  Object.defineProperty(process.stdout, 'isTTY', {
-    value: isTTY,
-    configurable: true,
-  })
-  const write = vi.spyOn(process.stdout, 'write').mockImplementation(((
-    chunk: string,
+type ExecCallback = (error: NodeJS.ErrnoException | null) => void
+
+function failWith(code: string): void {
+  execFileMock.mockImplementation(((
+    _file: string,
+    _args: readonly string[],
+    callback: ExecCallback,
   ) => {
-    writes.push(chunk)
-    return true
+    callback(Object.assign(new Error(code), { code }))
+    return undefined
   }) as never)
-  return {
-    writes,
-    restore() {
-      write.mockRestore()
-      if (ttyDescriptor) {
-        Object.defineProperty(process.stdout, 'isTTY', ttyDescriptor)
-      }
-    },
-  }
 }
 
-describe('notify desktop channel', () => {
+describe('notify', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-    mocks.execFile.mockImplementation(() => {})
-    mocks.notify.mockImplementation((_options, callback) => callback())
+    execFileMock.mockReset()
+    execFileMock.mockImplementation((() => undefined) as never)
   })
 
-  afterEach(() => {
-    vi.unstubAllEnvs()
+  it('sends title and body through notify-send', async () => {
+    const { notify } = await loadNotifier()
+
+    notify('pi — repo', 'Idle')
+
+    expect(execFileMock).toHaveBeenCalledWith(
+      'notify-send',
+      ['-a', 'pi', 'pi — repo', 'Idle'],
+      expect.any(Function),
+    )
   })
 
-  it('has no side effects when the desktop channel is disabled', () => {
-    notify('t', 'b', { desktop: false, osc777: false, osc9: false })
-    expect(nativeCallCount()).toBe(0)
+  it('passes multi-line bodies as a single argument', async () => {
+    const { notify } = await loadNotifier()
+
+    notify('title', 'line one\nline two')
+
+    expect(execFileMock.mock.calls[0]?.[1]).toEqual([
+      '-a',
+      'pi',
+      'title',
+      'line one\nline two',
+    ])
   })
 
-  it('sends the native notification when the desktop channel is enabled', async () => {
-    notify('t', 'b', { desktop: true, osc777: false, osc9: false })
+  it('stays silent for the rest of the session when notify-send is missing', async () => {
+    const { isNotifySendAvailable, notify } = await loadNotifier()
+    failWith('ENOENT')
+
+    notify('pi', 'first')
     await vi.waitFor(() => {
-      expect(nativeCallCount()).toBe(1)
+      expect(isNotifySendAvailable()).toBe(false)
     })
-    if (mocks.notify.mock.calls.length === 0) {
-      expect(mocks.execFile.mock.calls[0]?.[0]).toMatch(/^powershell(\.exe)?$/)
-    }
-  })
-})
+    notify('pi', 'second')
 
-describe('notify OSC channel', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
+    expect(execFileMock).toHaveBeenCalledTimes(1)
   })
 
-  afterEach(() => {
-    vi.unstubAllEnvs()
-    vi.restoreAllMocks()
-  })
+  it('keeps trying after an unrelated failure', async () => {
+    const { isNotifySendAvailable, notify } = await loadNotifier()
+    failWith('EACCES')
 
-  it('writes nothing when stdout is not a TTY', () => {
-    vi.stubEnv('TMUX', undefined)
-    const tty = stubTtyStdout(false)
-    try {
-      notify('t', 'b', { desktop: false, osc777: true, osc9: true })
-      expect(tty.writes).toEqual([])
-    } finally {
-      tty.restore()
-    }
-  })
+    notify('pi', 'first')
+    await vi.waitFor(() => {
+      expect(isNotifySendAvailable()).toBe(true)
+    })
+    notify('pi', 'second')
 
-  it('writes unwrapped sequences on a TTY outside tmux', () => {
-    vi.stubEnv('TMUX', undefined)
-    const tty = stubTtyStdout(true)
-    try {
-      notify('t', 'b', { desktop: false, osc777: true, osc9: true })
-      expect(tty.writes).toEqual([OSC_SEQUENCES])
-    } finally {
-      tty.restore()
-    }
-  })
-
-  it('wraps sequences in tmux passthrough when TMUX is set', () => {
-    vi.stubEnv('TMUX', '/tmp/tmux-0/default,42,0')
-    const tty = stubTtyStdout(true)
-    try {
-      notify('t', 'b', { desktop: false, osc777: true, osc9: true })
-      expect(tty.writes).toEqual([OSC_SEQUENCES_TMUX])
-    } finally {
-      tty.restore()
-    }
-  })
-
-  it('writes nothing when both OSC flags are off', () => {
-    vi.stubEnv('TMUX', undefined)
-    const tty = stubTtyStdout(true)
-    try {
-      notify('t', 'b', { desktop: false, osc777: false, osc9: false })
-      expect(tty.writes).toEqual([])
-    } finally {
-      tty.restore()
-    }
-  })
-
-  it('dispatches OSC and desktop independently', async () => {
-    vi.stubEnv('TMUX', undefined)
-    const tty = stubTtyStdout(true)
-    try {
-      notify('t', 'b', { desktop: true, osc777: true, osc9: true })
-      expect(tty.writes).toEqual([OSC_SEQUENCES])
-      await vi.waitFor(() => {
-        expect(nativeCallCount()).toBe(1)
-      })
-    } finally {
-      tty.restore()
-    }
+    expect(execFileMock).toHaveBeenCalledTimes(2)
   })
 })
