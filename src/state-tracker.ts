@@ -88,12 +88,7 @@ export class StateTracker extends Registrar {
     this.setupUiPrompt()
     this.setupToolCall()
 
-    this.pi.on('turn_start', () => {
-      this.markRunning()
-      this.clearIdleTimer()
-    })
-
-    this.pi.on('message_start', () => {
+    this.pi.on('agent_start', () => {
       this.markRunning()
       this.clearIdleTimer()
     })

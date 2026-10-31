@@ -120,7 +120,7 @@ describe('StateTracker', () => {
     const pi = makeFakePi()
     const { bodies } = makeTracker(pi)
 
-    pi.emit('turn_start')
+    pi.emit('agent_start')
     pi.emit('agent_settled')
     pi.emit('ui_prompt_start', {
       type: 'ui_prompt_start',
@@ -146,7 +146,7 @@ describe('StateTracker', () => {
     const pi = makeFakePi()
     const { bodies } = makeTracker(pi)
 
-    pi.emit('turn_start')
+    pi.emit('agent_start')
     pi.emit('ui_prompt_start', {
       type: 'ui_prompt_start',
       reason: 'ui_prompt',
@@ -177,7 +177,7 @@ describe('StateTracker', () => {
     const pi = makeFakePi()
     const { bodies } = makeTracker(pi)
 
-    pi.emit('turn_start')
+    pi.emit('agent_start')
     pi.emit('agent_settled')
     vi.advanceTimersByTime(10000)
 
@@ -205,7 +205,7 @@ describe('StateTracker', () => {
       finished: false,
     })
 
-    pi.emit('turn_start')
+    pi.emit('agent_start')
     pi.emit('agent_settled')
     vi.advanceTimersByTime(10000)
 
@@ -218,7 +218,7 @@ describe('StateTracker', () => {
     const pi = makeFakePi()
     const { bodies } = makeTracker(pi)
 
-    pi.emit('turn_start')
+    pi.emit('agent_start')
     pi.emit('agent_settled')
     vi.advanceTimersByTime(9000)
     pi.emit('tool_call', {
