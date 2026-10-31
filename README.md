@@ -29,7 +29,7 @@ All options live under the `piNotify` key in `~/.pi/agent/settings.json`. Everyt
     "notifySymbol": "🔔", // symbol appended to tmux window title (empty string to disable)
     "desktop": true, // send native desktop notifications via node-notifier / Windows toast (default: true)
     "osc777": true, // emit terminal OSC 777 notifications, title + body (default: true)
-    "osc9": true, // emit terminal OSC 9 notifications, body only (default: true)
+    "osc9": false, // emit terminal OSC 9 notifications, body only (default: false; enable for iTerm2/mintty, or instead of osc777)
     "dashboardTmuxKey": "alt+d", // tmux jump key offered by default for the dashboard window (triggered directly; enable dashboardTmuxKeyNeedsPrefix for prefix + key)
     "dashboardTmuxKeyNeedsPrefix": false, // require the tmux prefix before the dashboard key (default: false, i.e. no prefix needed)
     "finished": true, // enable/disable "Idle" notification
@@ -99,6 +99,8 @@ Pass a string argument (e.g., `/notify-test hello`) to override the body.
 While a TUI session runs, the extension enables terminal focus reporting (`DECSET 1004`) so it can tell "user is looking at this pane" from "user switched away", and disables it again from `session_shutdown` and from a `process.on('exit')` hook. A `SIGKILL` cannot be intercepted: after `kill -9`, the terminal keeps sending focus events until it is reset (or closed), which some shells echo as stray `^[[I` / `^[[O`. Known limitation: fullscreen/screen-mode switches can turn focus reporting off for the rest of the session, in which case the extension falls back to inactivity timing (`unfocusedActivityThresholdSecs`).
 
 ### Terminal notifications (OSC)
+
+OSC 777 carries title and body (rxvt, kitty, Ghostty), OSC 9 carries the body only (iTerm2, mintty, kitty, Ghostty). Only one of them is on by default: emitting both makes every notification show up twice in terminals that implement both. Enable `osc9` instead of `osc777` when your terminal does not understand OSC 777.
 
 Terminal notifications also work over SSH. Inside tmux (>= 3.3), add the following to `~/.tmux.conf`:
 
