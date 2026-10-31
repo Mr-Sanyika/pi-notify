@@ -31,6 +31,13 @@ export interface FocusScannerDeps {
   stdin?: TerminalInputStream
   stdout?: TerminalOutputStream
   timers?: FocusScannerTimers
+  /** Process-level hooks; overridable so tests do not touch the real process. */
+  process?: FocusScannerProcess
+}
+
+export interface FocusScannerProcess {
+  on(event: 'exit', listener: () => void): unknown
+  off(event: 'exit', listener: () => void): unknown
 }
 
 const defaultTimers: FocusScannerTimers = {
@@ -48,37 +55,51 @@ export class FocusInputScanner {
   private readonly stdin: TerminalInputStream
   private readonly stdout: TerminalOutputStream
   private readonly timers: FocusScannerTimers
+  private readonly proc: FocusScannerProcess
   private pending = ''
   private timeoutHandle: NodeJS.Timeout | undefined
   private listening = false
   private readonly stdinDataHandler = (chunk: string) => {
     this.feed(chunk)
   }
+  // Focus reporting is terminal state we enabled, so it has to be undone on
+  // every exit path we can observe — session_shutdown alone is not enough when
+  // the agent exits early (uncaught error, explicit process.exit()).
+  private readonly exitHandler = () => {
+    this.writeDisable()
+  }
 
   constructor(
     callbacks: FocusScannerCallbacks,
-    { stdin, stdout, timers }: FocusScannerDeps = {},
+    { stdin, stdout, timers, process: proc }: FocusScannerDeps = {},
   ) {
     this.callbacks = callbacks
     this.stdin = stdin ?? process.stdin
     this.stdout = stdout ?? process.stdout
     this.timers = timers ?? defaultTimers
+    this.proc = proc ?? process
   }
 
   start(): void {
     if (this.listening) return
     this.listening = true
     this.stdout.write(ENABLE_FOCUS_REPORTING)
+    this.proc.on('exit', this.exitHandler)
     this.stdin.on('data', this.stdinDataHandler)
   }
 
   stop(): void {
     if (this.listening) {
       this.listening = false
-      this.stdout.write(DISABLE_FOCUS_REPORTING)
+      this.writeDisable()
+      this.proc.off('exit', this.exitHandler)
       this.stdin.removeListener('data', this.stdinDataHandler)
     }
     this.clear()
+  }
+
+  private writeDisable(): void {
+    this.stdout.write(DISABLE_FOCUS_REPORTING)
   }
 
   feed(chunk: string): void {

@@ -131,6 +131,39 @@ describe('FocusInputScanner', () => {
     ])
   })
 
+  it('disables focus reporting from the process exit hook', () => {
+    const writes: string[] = []
+    const exitListeners: Array<() => void> = []
+    const proc = {
+      on: (_event: 'exit', listener: () => void) => {
+        exitListeners.push(listener)
+      },
+      off: (_event: 'exit', listener: () => void) => {
+        const index = exitListeners.indexOf(listener)
+        if (index !== -1) exitListeners.splice(index, 1)
+      },
+    }
+    const { scanner } = makeScanner({
+      stdout: { write: (chunk: string) => writes.push(chunk) },
+      stdin: {
+        on: () => {},
+        removeListener: () => {},
+      },
+      process: proc,
+    })
+
+    scanner.start()
+    expect(exitListeners.length).toBe(1)
+    // Simulate the agent dying without a `session_shutdown`.
+    exitListeners[0]?.()
+    expect(writes).toEqual(['\x1b[?1004h', '\x1b[?1004l'])
+
+    writes.length = 0
+    scanner.stop()
+    expect(exitListeners.length).toBe(0)
+    expect(writes).toEqual(['\x1b[?1004l'])
+  })
+
   it('clears pending state idempotently', () => {
     const { events, scanner } = makeScanner()
     scanner.feed('\x1b[')
