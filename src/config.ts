@@ -10,6 +10,7 @@ const NotifyConfigSchema = Type.Object({
   finished: Type.Optional(Type.Boolean()),
   onlyNotifyWhenUnfocused: Type.Optional(Type.Boolean()),
   unfocusedActivityThresholdSecs: Type.Optional(Type.Number()),
+  idleDelaySecs: Type.Optional(Type.Number()),
   notifySymbol: Type.Optional(Type.String()),
 })
 type NotifyConfig = Static<typeof NotifyConfigSchema>
@@ -19,10 +20,20 @@ export interface ResolvedNotifyConfig {
   readonly finished: boolean
   readonly onlyNotifyWhenUnfocused: boolean
   readonly unfocusedActivityThresholdMs: number
+  readonly idleDelayMs: number
   readonly notifySymbol: string
 }
 
 const DEFAULT_NOTIFY_SYMBOL = '🔔'
+const DEFAULT_IDLE_DELAY_SECS = 10
+/** Upper bound keeps a typo like `idleDelaySecs: 1e9` from silencing the toast. */
+const MAX_IDLE_DELAY_SECS = 3600
+
+function clampIdleDelayMs(secs: number | undefined): number {
+  if (secs === undefined) return DEFAULT_IDLE_DELAY_SECS * 1000
+  const bounded = Math.min(Math.max(secs, 0), MAX_IDLE_DELAY_SECS)
+  return Math.round(bounded * 1000)
+}
 
 const SETTINGS_PATH = join(getAgentDir(), 'settings.json')
 
@@ -77,6 +88,7 @@ export function loadConfig(): ResolvedNotifyConfig {
       0,
       (cfg.unfocusedActivityThresholdSecs ?? 30) * 1000,
     ),
+    idleDelayMs: clampIdleDelayMs(cfg.idleDelaySecs),
     notifySymbol: cfg.notifySymbol ?? DEFAULT_NOTIFY_SYMBOL,
   }
 }

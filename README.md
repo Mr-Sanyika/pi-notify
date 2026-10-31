@@ -5,7 +5,7 @@ coding agent. Forked from [`@raidou/pi-notify`](https://github.com/weirongxu/pi-
 
 It fires a desktop notification in two situations:
 
-- the agent has finished and the session is quiet for 10 seconds (`Idle`)
+- the agent has finished and the session is quiet for a few seconds (`Idle`)
 - pi is blocked on you: a permission approval, a `select`/`confirm`/`input` dialog
   (`Waiting: Select — Apply changes?`)
 
@@ -51,6 +51,7 @@ A malformed `settings.json` falls back to the defaults instead of breaking the a
     "finished": true, // send "Idle" when a run finishes (default: true)
     "onlyNotifyWhenUnfocused": true, // suppress notifications while you are looking (default: true)
     "unfocusedActivityThresholdSecs": 30, // inactivity fallback when the terminal reports no focus (default: 30)
+    "idleDelaySecs": 10, // quiet time after a run before "Idle" fires, 0-3600 (default: 10)
     "notifySymbol": "🔔", // tmux window marker, empty string disables it (default: "🔔")
   },
 }
@@ -60,7 +61,7 @@ A malformed `settings.json` falls back to the defaults instead of breaking the a
 
 | Event | Source | Body |
 | --- | --- | --- |
-| **Finished** | `agent_settled`, then 10 s without further activity | `Idle` |
+| **Finished** | `agent_settled`, then `idleDelaySecs` without further activity | `Idle` |
 | **Waiting** | `ui_prompt_start` (permission, `select`, `confirm`, `input`, editor, custom) | `Waiting: <kind>[ — <title>]` |
 
 "Finished" needs a run that actually did something: settling a session that never had
