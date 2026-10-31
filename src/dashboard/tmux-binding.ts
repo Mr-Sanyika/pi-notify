@@ -53,13 +53,51 @@ export function toTmuxKey(key: string): string {
   return `${modifiers.join('-')}${modifiers.length > 0 ? '-' : ''}${base}`
 }
 
+export type UnbindDashboardTmuxBinding = () => void
+
+/**
+ * Register the jump key and return the matching cleanup function.
+ *
+ * The binding is installed in the user's key table, so it must not outlive
+ * the dashboard: `unbind-key` runs from the dashboard's teardown. An existing
+ * binding for the same key is never clobbered — the caller keeps whatever the
+ * user configured and this session simply does not offer the jump key.
+ */
 export function registerDashboardTmuxBinding(
   key: string,
   needsPrefix: boolean,
   run: CommandRunner = defaultRunner,
-): void {
+): UnbindDashboardTmuxBinding {
+  const table = needsPrefix ? 'prefix' : 'root'
+  const tmuxKey = toTmuxKey(key)
+  if (hasBinding(table, tmuxKey, run)) return () => {}
+
   const flag = needsPrefix ? [] : ['-n']
-  run('tmux', ['bind-key', ...flag, toTmuxKey(key), 'run-shell', JUMP_SCRIPT])
+  const bind = run('tmux', [
+    'bind-key',
+    ...flag,
+    tmuxKey,
+    'run-shell',
+    JUMP_SCRIPT,
+  ])
+  if (bind === undefined) return () => {}
+
+  let unbound = false
+  return () => {
+    if (unbound) return
+    unbound = true
+    run('tmux', ['unbind-key', '-T', table, tmuxKey])
+  }
+}
+
+function hasBinding(
+  table: string,
+  tmuxKey: string,
+  run: CommandRunner,
+): boolean {
+  // `list-keys` exits non-zero ("unknown key: …") when nothing is bound there.
+  const existing = run('tmux', ['list-keys', '-T', table, tmuxKey])
+  return existing !== undefined && existing.trim() !== ''
 }
 
 export function markDashboardTmuxPane(
