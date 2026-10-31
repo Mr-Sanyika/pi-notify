@@ -8,7 +8,6 @@ import {
 import { dirname } from 'node:path'
 
 import { omit, orderBy, partition } from 'lodash-es'
-import lockfile from 'proper-lockfile'
 
 import {
   isSessionState,
@@ -16,6 +15,7 @@ import {
   STATE_FILE,
   STATE_TMP_FILE,
 } from './consts.js'
+import { acquireLock } from './file-lock.js'
 
 const ESRCH = 'ESRCH'
 const EPERM = 'EPERM'
@@ -85,6 +85,8 @@ export interface DashboardState {
 
 const LOCK_RETRY_INTERVAL_MS = 50
 const LOCK_MAX_RETRIES = 20
+const LOCK_STALE_MS = 30000
+const LOCK_PATH = `${STATE_FILE}.lock`
 
 export function ensureStateDir(): void {
   const dir = dirname(STATE_FILE)
@@ -160,14 +162,10 @@ async function withState(
   apply: (state: DashboardState) => DashboardState | undefined,
 ): Promise<DashboardState | undefined> {
   ensureStateDir()
-  const release = await lockfile.lock(STATE_FILE, {
-    realpath: false,
-    stale: 30000,
-    retries: {
-      minTimeout: LOCK_RETRY_INTERVAL_MS,
-      maxTimeout: LOCK_RETRY_INTERVAL_MS,
-      retries: LOCK_MAX_RETRIES,
-    },
+  const release = await acquireLock(LOCK_PATH, {
+    staleMs: LOCK_STALE_MS,
+    retryMs: LOCK_MAX_RETRIES * LOCK_RETRY_INTERVAL_MS,
+    retryIntervalMs: LOCK_RETRY_INTERVAL_MS,
   })
 
   try {
@@ -177,7 +175,7 @@ async function withState(
     renameSync(STATE_TMP_FILE, STATE_FILE)
     return newState
   } finally {
-    await release()
+    release()
   }
 }
 
