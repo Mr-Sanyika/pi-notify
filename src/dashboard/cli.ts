@@ -9,6 +9,7 @@ import {
 import { loadConfig } from '../config.js'
 import { readSessions, type SessionRecord } from '../stores/state-store.js'
 import { watchStore } from '../stores/watch-store.js'
+import type { UnbindDashboardTmuxBinding } from './tmux-binding.js'
 import {
   markDashboardTmuxPane,
   registerDashboardTmuxBinding,
@@ -103,9 +104,10 @@ function runDashboard(
 
 async function main(): Promise<void> {
   const cfg = loadConfig()
+  let unbindDashboard: UnbindDashboardTmuxBinding = () => {}
   if (inTmux) {
     markDashboardTmuxPane()
-    registerDashboardTmuxBinding(
+    unbindDashboard = registerDashboardTmuxBinding(
       cfg.dashboardTmuxKey,
       cfg.dashboardTmuxKeyNeedsPrefix,
     )
@@ -121,6 +123,7 @@ async function main(): Promise<void> {
     console.error(err)
     exitCode = 1
   } finally {
+    unbindDashboard()
     if (inTmux) unmarkDashboardTmuxPane()
   }
   process.exit(exitCode)

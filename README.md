@@ -80,6 +80,8 @@ Open a full-screen dashboard listing all pi sessions with summary counts (total,
 
 Inside tmux, it registers a live keybinding (default `alt+d`, configurable via `dashboardTmuxKey`) that jumps to the dashboard pane from any pane — trigger with `alt+d` (set `dashboardTmuxKeyNeedsPrefix: true` to require `prefix + alt+d`).
 
+The binding lives in your tmux key table, so it is removed when the dashboard exits and it never overwrites a key that is already bound: if `alt+d` is taken, that session simply offers no jump key. Prefer `dashboardTmuxKeyNeedsPrefix: true` (or a key that pi itself does not use) when the default would shadow a terminal keybinding.
+
 
 ### `/notify-test`
 
