@@ -29,7 +29,7 @@ All options live under the `piNotify` key in `~/.pi/agent/settings.json`. Everyt
     "notifySymbol": "🔔", // symbol appended to tmux window title (empty string to disable)
     "desktop": true, // send native desktop notifications via node-notifier / Windows toast (default: true)
     "osc777": true, // emit terminal OSC 777 notifications, title + body (default: true)
-    "osc9": true, // emit terminal OSC 9 notifications, body only (default: true)
+    "osc9": false, // emit terminal OSC 9 notifications, body only (default: false; enable for iTerm2/mintty, or instead of osc777)
     "dashboardTmuxKey": "alt+d", // tmux jump key offered by default for the dashboard window (triggered directly; enable dashboardTmuxKeyNeedsPrefix for prefix + key)
     "dashboardTmuxKeyNeedsPrefix": false, // require the tmux prefix before the dashboard key (default: false, i.e. no prefix needed)
     "finished": true, // enable/disable "Idle" notification
@@ -93,6 +93,8 @@ Pass a string argument (e.g., `/notify-test hello`) to override the body.
 **WSL2 note:** `node-notifier` reports `process.platform === "linux"` and would route to `notify-send`, which is usually not installed under WSL and fails silently. `@raidou/pi-notify` detects WSL and raises a Windows toast via `powershell.exe` directly, so notifications reach the Windows Action Center out of the box.
 
 ### Terminal notifications (OSC)
+
+OSC 777 carries title and body (rxvt, kitty, Ghostty), OSC 9 carries the body only (iTerm2, mintty, kitty, Ghostty). Only one of them is on by default: emitting both makes every notification show up twice in terminals that implement both. Enable `osc9` instead of `osc777` when your terminal does not understand OSC 777.
 
 Terminal notifications also work over SSH. Inside tmux (>= 3.3), add the following to `~/.tmux.conf`:
 

@@ -17,7 +17,7 @@ const ALL_DEFAULTS = {
   notifySymbol: '🔔',
   desktop: true,
   osc777: true,
-  osc9: true,
+  osc9: false,
   dashboardTmuxKey: 'alt+d',
   dashboardTmuxKeyNeedsPrefix: false,
 }

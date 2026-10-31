@@ -111,7 +111,7 @@ export function loadConfig(): ResolvedNotifyConfig {
     notifySymbol: cfg.notifySymbol ?? DEFAULT_NOTIFY_SYMBOL,
     desktop: cfg.desktop ?? true,
     osc777: cfg.osc777 ?? true,
-    osc9: cfg.osc9 ?? true,
+    osc9: cfg.osc9 ?? false,
     dashboardTmuxKey: cfg.dashboardTmuxKey ?? DEFAULT_DASHBOARD_TMUX_KEY,
     dashboardTmuxKeyNeedsPrefix: cfg.dashboardTmuxKeyNeedsPrefix ?? false,
   }
