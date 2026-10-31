@@ -7,8 +7,6 @@ import type { ResolvedNotifyConfig } from './config.js'
 import { Registrar } from './shared/registrar.js'
 import type { NotifyAction } from './shared/types.js'
 
-const IDLE_TIMEOUT_MS = 10000
-
 const PROMPT_KIND_LABELS: Record<UIPromptKind, string> = {
   select: 'Select',
   confirm: 'Confirm',
@@ -44,7 +42,7 @@ export class StateTracker extends Registrar {
       if (wasRunning && this.config.finished) {
         this.notify('Idle')
       }
-    }, IDLE_TIMEOUT_MS)
+    }, this.config.idleDelayMs)
   }
 
   private clearIdleTimer(): void {

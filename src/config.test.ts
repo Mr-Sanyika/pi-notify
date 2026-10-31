@@ -12,6 +12,7 @@ const ALL_DEFAULTS = {
   finished: true,
   onlyNotifyWhenUnfocused: true,
   unfocusedActivityThresholdMs: 30000,
+  idleDelayMs: 10000,
   notifySymbol: '🔔',
 }
 
@@ -36,6 +37,15 @@ describe('parseConfig', () => {
     })
   })
 
+  it('accepts an idle delay', () => {
+    expect(
+      parseConfig(JSON.stringify({ piNotify: { idleDelaySecs: 45 } })),
+    ).toEqual({
+      status: 'valid',
+      piNotify: { idleDelaySecs: 45 },
+    })
+  })
+
   it('parses piNotify fields', () => {
     const content = JSON.stringify({
       piNotify: {
@@ -43,6 +53,7 @@ describe('parseConfig', () => {
         finished: false,
         onlyNotifyWhenUnfocused: false,
         unfocusedActivityThresholdSecs: 5,
+        idleDelaySecs: 45,
         notifySymbol: '!',
       },
     })
@@ -82,6 +93,28 @@ describe('loadConfig', () => {
 
   it('returns all defaults for empty settings', () => {
     expect(loadConfig()).toEqual(ALL_DEFAULTS)
+  })
+
+  it('uses idleDelaySecs as milliseconds', async () => {
+    const { readFileSync } = await import('node:fs')
+    vi.mocked(readFileSync).mockReturnValue(
+      JSON.stringify({ piNotify: { idleDelaySecs: 45 } }),
+    )
+
+    expect(loadConfig().idleDelayMs).toBe(45000)
+  })
+
+  it('clamps idleDelaySecs to a sane range', async () => {
+    const { readFileSync } = await import('node:fs')
+    const delayFor = (secs: number): number => {
+      vi.mocked(readFileSync).mockReturnValue(
+        JSON.stringify({ piNotify: { idleDelaySecs: secs } }),
+      )
+      return loadConfig().idleDelayMs
+    }
+
+    expect(delayFor(-5)).toBe(0)
+    expect(delayFor(1e9)).toBe(3600000)
   })
 
   it('returns all defaults and reads nothing when settings file is missing', async () => {

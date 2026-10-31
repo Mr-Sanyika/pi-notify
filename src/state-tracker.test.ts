@@ -64,6 +64,7 @@ const BASE_CONFIG: ResolvedNotifyConfig = {
   finished: true,
   onlyNotifyWhenUnfocused: true,
   unfocusedActivityThresholdMs: 0,
+  idleDelayMs: 10000,
   notifySymbol: '',
 }
 
@@ -180,6 +181,25 @@ describe('StateTracker', () => {
     pi.emit('agent_start')
     pi.emit('agent_settled')
     vi.advanceTimersByTime(10000)
+
+    await flush()
+
+    expect(bodies).toEqual(['Idle'])
+  })
+
+  it('honours a configured idle delay', async () => {
+    const pi = makeFakePi()
+    const { bodies } = makeTracker(pi, { ...BASE_CONFIG, idleDelayMs: 2000 })
+
+    pi.emit('agent_start')
+    pi.emit('agent_settled')
+    vi.advanceTimersByTime(1999)
+
+    await flush()
+
+    expect(bodies).toEqual([])
+
+    vi.advanceTimersByTime(1)
 
     await flush()
 
