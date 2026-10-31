@@ -145,6 +145,29 @@ describe('StateTracker', () => {
     expect(states).toEqual(['running'])
   })
 
+  it('does not turn listener failures into unhandled rejections', async () => {
+    const pi = makeFakePi()
+    const { tracker } = makeTracker(pi)
+    tracker.events.on('running', () => {
+      throw new Error('listener boom')
+    })
+
+    const rejections: unknown[] = []
+    const onRejection = (reason: unknown): void => {
+      rejections.push(reason)
+    }
+    process.on('unhandledRejection', onRejection)
+    try {
+      pi.emit('turn_start')
+      await flush()
+      await flush()
+    } finally {
+      process.off('unhandledRejection', onRejection)
+    }
+
+    expect(rejections).toEqual([])
+  })
+
   it('emits idle after the idle timeout following agent_settled', async () => {
     const pi = makeFakePi()
     const { states } = makeTracker(pi)

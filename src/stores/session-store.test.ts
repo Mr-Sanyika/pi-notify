@@ -243,6 +243,25 @@ describe('SessionStore', () => {
     }).not.toThrow()
   })
 
+  it('keeps running when the state lock is held', async () => {
+    const pi = makeFakePi()
+    const stateTracker = makeFakeStateTracker()
+    makeStore(pi, stateTracker)
+
+    emitSessionStart(pi)
+    await settle()
+
+    // Hold a fresh lock for longer than the retry budget: the write must fail
+    // softly instead of rejecting out of the event listener.
+    writeFileSync(testLockFile, 'held', 'utf8')
+    stateTracker.events.emit('running')
+    await settle()
+    unlinkSync(testLockFile)
+
+    const [record] = Object.values(readState().sessions)
+    expect(record?.state).toBe('idle')
+  })
+
   it('ignores events before session_start', () => {
     const pi = makeFakePi()
     const stateTracker = makeFakeStateTracker()
