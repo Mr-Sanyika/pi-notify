@@ -31,15 +31,11 @@
     "test": "pnpm run test:types && pnpm run test:lint && pnpm run test:unit",
     "test:types": "tsc --noEmit",
     "test:lint": "eslint --fix .",
-    "test:unit": "vitest run",
-    "dashboard": "tsx src/dashboard/cli.ts"
+    "test:unit": "vitest run"
   },
   "dependencies": {
     "emittery": "^2.0.0",
-    "lodash-es": "^4.18.1",
-    "node-notifier": "^10.0.1",
-    "proper-lockfile": "^4.1.2",
-    "tsx": "^4.20.0"
+    "node-notifier": "^10.0.1"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
@@ -50,9 +46,7 @@
     "@earendil-works/pi-coding-agent": "1.0.0",
     "@earendil-works/pi-tui": "1.0.0",
     "@raidou/eslint-config-base": "^4.4.3",
-    "@types/lodash-es": "^4.17.12",
     "@types/node": "^22.0.0",
-    "@types/proper-lockfile": "^4.1.4",
     "eslint": "^10.7.0",
     "prettier": "^3.9.5",
     "typebox": "1.3.27",

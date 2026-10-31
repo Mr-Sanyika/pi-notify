@@ -1,28 +1,24 @@
-import type { SessionStore } from './stores/session-store.js'
 import type { TmuxTitleTracker } from './tmux-title.js'
 
+/**
+ * Owns the "this window has something for you" marker.
+ *
+ * Without the dashboard there is no session registry to persist to, so the
+ * marker lives entirely in the tmux window title: it is appended when a
+ * notification fires and removed as soon as the user focuses the pane again.
+ */
 export class UnreadTracker {
   private readonly titleTracker: TmuxTitleTracker
-  private readonly sessionStore: SessionStore
 
-  constructor({
-    titleTracker,
-    sessionStore,
-  }: {
-    titleTracker: TmuxTitleTracker
-    sessionStore: SessionStore
-  }) {
+  constructor({ titleTracker }: { titleTracker: TmuxTitleTracker }) {
     this.titleTracker = titleTracker
-    this.sessionStore = sessionStore
   }
 
   markUnread(): void {
     this.titleTracker.mark()
-    void this.sessionStore.markUnread().catch(() => {})
   }
 
   clearUnread(): void {
     this.titleTracker.restore()
-    void this.sessionStore.clearUnread().catch(() => {})
   }
 }

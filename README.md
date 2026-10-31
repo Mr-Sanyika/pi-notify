@@ -4,6 +4,14 @@ A notification extension for the [pi](https://github.com/earendil-works/pi-codin
 
 `@raidou/pi-notify` fires a native desktop notification on idle, tool calls (optional, e.g. `Tool call: ask_user`), user-facing UI prompts (via pi's `ui_prompt_start`, e.g. permission approvals or `select`/`confirm`/`input` dialogs, requires pi >= 0.85.0), and custom pi events.
 
+> **This branch: `no-dashboard`.** It is the notification path without the
+> `/notify-dashboard` session browser. That drops the shared session registry,
+> the tmux jump keybinding, `tsx`/`esbuild`, `lodash-es` and `proper-lockfile`:
+> no state file is written, nothing is added to your tmux key table, and the
+> extension has two runtime dependencies instead of five. What remains is
+> notification delivery, the tmux window marker, and the idle/tool/UI-prompt
+> triggers.
+
 ## Installation
 
 ```bash
@@ -30,8 +38,6 @@ All options live under the `piNotify` key in `~/.pi/agent/settings.json`. Everyt
     "desktop": true, // send native desktop notifications via node-notifier / Windows toast (default: true)
     "osc777": true, // emit terminal OSC 777 notifications, title + body (default: true)
     "osc9": true, // emit terminal OSC 9 notifications, body only (default: true)
-    "dashboardTmuxKey": "alt+d", // tmux jump key offered by default for the dashboard window (triggered directly; enable dashboardTmuxKeyNeedsPrefix for prefix + key)
-    "dashboardTmuxKeyNeedsPrefix": false, // require the tmux prefix before the dashboard key (default: false, i.e. no prefix needed)
     "finished": true, // enable/disable "Idle" notification
     "events": {
       "my:custom:event": "Custom event triggered", // custom event channel -> notification message
@@ -54,6 +60,10 @@ All options live under the `piNotify` key in `~/.pi/agent/settings.json`. Everyt
 | **Custom events** | Custom pi event channels configured in `events`                       | Customizable                      |
 | **External API**  | `pi.events.emit('pi-notify:notify', 'message')` from other extensions | The emitted message               |
 
+### tmux window marker
+
+On tmux, a notification appends `notifySymbol` (default `🔔`) to the window title and removes it again when you focus that pane, so an idle window that wants attention is visible in the status bar. Nothing is written to disk for this; the marker is the window title itself.
+
 ### Job tracking for background tasks
 
 Extensions running background tasks can prevent spurious "Idle" notifications by emitting job lifecycle events. Notifications on `agent_settled` are suppressed while jobs are active. Custom event notifications are soft dependencies: if a package that broadcasts a specific event is not installed, that notification is skipped.
@@ -73,13 +83,6 @@ function endBackgroundJob(jobId: string): void {
 Events are automatically cleaned up on `session_shutdown`.
 
 ## Commands
-
-### `/notify-dashboard`
-
-Open a full-screen dashboard listing all pi sessions with summary counts (total, running, idle).
-
-Inside tmux, it registers a live keybinding (default `alt+d`, configurable via `dashboardTmuxKey`) that jumps to the dashboard pane from any pane — trigger with `alt+d` (set `dashboardTmuxKeyNeedsPrefix: true` to require `prefix + alt+d`).
-
 
 ### `/notify-test`
 
