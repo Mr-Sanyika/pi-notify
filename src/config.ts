@@ -23,8 +23,6 @@ const NotifyConfigSchema = Type.Object({
   desktop: Type.Optional(Type.Boolean()),
   osc777: Type.Optional(Type.Boolean()),
   osc9: Type.Optional(Type.Boolean()),
-  dashboardTmuxKey: Type.Optional(Type.String()),
-  dashboardTmuxKeyNeedsPrefix: Type.Optional(Type.Boolean()),
 })
 type NotifyConfig = Static<typeof NotifyConfigSchema>
 
@@ -39,12 +37,9 @@ export interface ResolvedNotifyConfig {
   readonly desktop: boolean
   readonly osc777: boolean
   readonly osc9: boolean
-  readonly dashboardTmuxKey: string
-  readonly dashboardTmuxKeyNeedsPrefix: boolean
 }
 
 const DEFAULT_NOTIFY_SYMBOL = '🔔'
-export const DEFAULT_DASHBOARD_TMUX_KEY = 'alt+d'
 
 const SETTINGS_PATH = join(getAgentDir(), 'settings.json')
 
@@ -112,7 +107,5 @@ export function loadConfig(): ResolvedNotifyConfig {
     desktop: cfg.desktop ?? true,
     osc777: cfg.osc777 ?? true,
     osc9: cfg.osc9 ?? false,
-    dashboardTmuxKey: cfg.dashboardTmuxKey ?? DEFAULT_DASHBOARD_TMUX_KEY,
-    dashboardTmuxKeyNeedsPrefix: cfg.dashboardTmuxKeyNeedsPrefix ?? false,
   }
 }

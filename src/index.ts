@@ -3,7 +3,6 @@ import { basename } from 'node:path'
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 
 import { loadConfig } from './config.js'
-import { DashboardCommand } from './dashboard/command.js'
 import { FocusTracker } from './focus.js'
 import { JobTracker } from './jobs.js'
 import { notify } from './notifier.js'
@@ -11,7 +10,6 @@ import { NotifyTest } from './notify-test.js'
 import type { Registerable } from './shared/types.js'
 import { StateTracker } from './state-tracker.js'
 import { SessionState } from './states.js'
-import { SessionStore } from './stores/session-store.js'
 import { TmuxTitleTracker } from './tmux-title.js'
 import { UnreadTracker } from './unread-tracker.js'
 
@@ -26,15 +24,10 @@ export default function piNotifyExtension(pi: ExtensionAPI): void {
   const tmuxTitleTracker = new TmuxTitleTracker(pi, config)
   const jobTracker = new JobTracker(pi)
   const stateTracker = new StateTracker(pi, jobTracker, config)
-  const sessionStore = new SessionStore(pi, stateTracker)
-  const unreadTracker = new UnreadTracker({
-    titleTracker: tmuxTitleTracker,
-    sessionStore,
-  })
+  const unreadTracker = new UnreadTracker({ titleTracker: tmuxTitleTracker })
   const focusTracker = new FocusTracker(pi, unreadTracker)
   const notifyTest = new NotifyTest(pi, title, config, unreadTracker)
   const sessionState = new SessionState(pi)
-  const dashboardCommand = new DashboardCommand(pi)
 
   function notifyReal(body: string): void {
     if (!config.enabled || !sessionState.hasUI) return
@@ -55,9 +48,7 @@ export default function piNotifyExtension(pi: ExtensionAPI): void {
     focusTracker,
     jobTracker,
     stateTracker,
-    sessionStore,
     notifyTest,
-    dashboardCommand,
   ]
   for (const r of registrables) r.register(notifyReal)
 }

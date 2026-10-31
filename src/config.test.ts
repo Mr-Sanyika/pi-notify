@@ -18,8 +18,6 @@ const ALL_DEFAULTS = {
   desktop: true,
   osc777: true,
   osc9: false,
-  dashboardTmuxKey: 'alt+d',
-  dashboardTmuxKeyNeedsPrefix: false,
 }
 
 describe('parseConfig', () => {
@@ -58,8 +56,6 @@ describe('parseConfig', () => {
         desktop: false,
         osc777: false,
         osc9: true,
-        dashboardTmuxKey: 'ctrl+g',
-        dashboardTmuxKeyNeedsPrefix: true,
       },
     })
     expect(parseConfig(content)).toEqual({

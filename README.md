@@ -11,9 +11,15 @@ A notification extension for the [pi](https://github.com/earendil-works/pi-codin
 | `pi` >= 0.85.0 | UI prompt notifications use the `ui_prompt_start` event. |
 | A desktop notifier | Linux: `notify-send` plus a running notification daemon. macOS: Notification Center. Windows and WSL2: PowerShell toast (WSL is detected and `powershell.exe` used directly). |
 | tmux >= 3.3 with `set -g allow-passthrough all` | Only needed for OSC notifications to reach the outer terminal from inside tmux. |
-| `node` or `bun` on `PATH` | Only for `/notify-dashboard`, which runs the dashboard TUI as a child process. |
 
 The extension runs inside pi's own runtime (a Bun single-file binary), not plain Node. Bugs that only reproduce there are still real; report them with the pi version from `pi --version`. Known problems are tracked in the [issue tracker](https://github.com/weirongxu/pi-notify/issues).
+
+> **This branch (`lite`): notifications without the dashboard.**
+> The `/notify-dashboard` session browser is not part of this line. That drops the
+> shared session registry, the tmux jump keybinding, `tsx`/`esbuild`, `lodash-es` and
+> `proper-lockfile`: nothing is written to disk, nothing is added to your tmux key
+> table, and there are two runtime dependencies. Notification delivery, the tmux
+> window marker and the idle/tool/UI-prompt triggers are unchanged.
 
 ## Installation
 
@@ -41,8 +47,6 @@ All options live under the `piNotify` key in `~/.pi/agent/settings.json`. Everyt
     "desktop": true, // send native desktop notifications via node-notifier / Windows toast (default: true)
     "osc777": true, // emit terminal OSC 777 notifications, title + body (default: true)
     "osc9": false, // emit terminal OSC 9 notifications, body only (default: false; enable for iTerm2/mintty, or instead of osc777)
-    "dashboardTmuxKey": "alt+d", // tmux jump key offered by default for the dashboard window (triggered directly; enable dashboardTmuxKeyNeedsPrefix for prefix + key)
-    "dashboardTmuxKeyNeedsPrefix": false, // require the tmux prefix before the dashboard key (default: false, i.e. no prefix needed)
     "finished": true, // enable/disable "Idle" notification
     "events": {
       "my:custom:event": "Custom event triggered", // custom event channel -> notification message
@@ -65,6 +69,10 @@ All options live under the `piNotify` key in `~/.pi/agent/settings.json`. Everyt
 | **Custom events** | Custom pi event channels configured in `events`                       | Customizable                      |
 | **External API**  | `pi.events.emit('pi-notify:notify', 'message')` from other extensions | The emitted message               |
 
+### tmux window marker
+
+On tmux, a notification appends `notifySymbol` (default `🔔`) to the window title and removes it again when you focus that pane, so an idle window that wants attention is visible in the status bar. Nothing is written to disk for this; the marker is the window title itself.
+
 ### Job tracking for background tasks
 
 Extensions running background tasks can prevent spurious "Idle" notifications by emitting job lifecycle events. Notifications on `agent_settled` are suppressed while jobs are active. Custom event notifications are soft dependencies: if a package that broadcasts a specific event is not installed, that notification is skipped.
@@ -84,14 +92,6 @@ function endBackgroundJob(jobId: string): void {
 Events are automatically cleaned up on `session_shutdown`.
 
 ## Commands
-
-### `/notify-dashboard`
-
-Open a full-screen dashboard listing all pi sessions with summary counts (total, running, idle).
-
-Inside tmux, it registers a live keybinding (default `alt+d`, configurable via `dashboardTmuxKey`) that jumps to the dashboard pane from any pane — trigger with `alt+d` (set `dashboardTmuxKeyNeedsPrefix: true` to require `prefix + alt+d`).
-
-The binding lives in your tmux key table, so it is removed when the dashboard exits and it never overwrites a key that is already bound: if `alt+d` is taken, that session simply offers no jump key. Prefer `dashboardTmuxKeyNeedsPrefix: true` (or a key that pi itself does not use) when the default would shadow a terminal keybinding.
 
 
 ### `/notify-test`
