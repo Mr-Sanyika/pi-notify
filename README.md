@@ -4,6 +4,17 @@ A notification extension for the [pi](https://github.com/earendil-works/pi-codin
 
 `@raidou/pi-notify` fires a native desktop notification on idle, tool calls (optional, e.g. `Tool call: ask_user`), user-facing UI prompts (via pi's `ui_prompt_start`, e.g. permission approvals or `select`/`confirm`/`input` dialogs, requires pi >= 0.85.0), and custom pi events.
 
+## Requirements
+
+| Requirement | Why |
+| --- | --- |
+| `pi` >= 0.85.0 | UI prompt notifications use the `ui_prompt_start` event. |
+| A desktop notifier | Linux: `notify-send` plus a running notification daemon. macOS: Notification Center. Windows and WSL2: PowerShell toast (WSL is detected and `powershell.exe` used directly). |
+| tmux >= 3.3 with `set -g allow-passthrough all` | Only needed for OSC notifications to reach the outer terminal from inside tmux. |
+| `node` or `bun` on `PATH` | Only for `/notify-dashboard`, which runs the dashboard TUI as a child process. |
+
+The extension runs inside pi's own runtime (a Bun single-file binary), not plain Node. Bugs that only reproduce there are still real; report them with the pi version from `pi --version`. Known problems are tracked in the [issue tracker](https://github.com/weirongxu/pi-notify/issues).
+
 ## Installation
 
 ```bash
